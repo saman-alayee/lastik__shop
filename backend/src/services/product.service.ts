@@ -1,0 +1,1277 @@
+import prisma from '../config/database';
+import { Prisma, CategoryFeedSortMode } from '@prisma/client';
+import { cacheGet, cacheSet, cacheDel } from '../config/redis';
+import { AppError } from '../utils/errors';
+import { slugify } from '../utils/helpers';
+import { searchTermsFromQuery, searchTermVariants } from '../utils/normalize';
+import { cartService } from './cart.service';
+import { computeBundlePrices, resolveTireFields, type TireMetaInput } from '../utils/tire';
+
+export const PRODUCT_HOLD_MESSAGE = 'این کالا انتخاب شده؛ در حال خرید است';
+
+interface ProductFilters {
+  categoryId?: string;
+  categorySlug?: string;
+  tagId?: string;
+  ids?: string[];
+  search?: string;
+  barcode?: string;
+  expiringBefore?: string;
+  expiringAfter?: string;
+  featured?: boolean;
+  discounted?: boolean;
+  homeDeal?: boolean;
+  homeFeatured?: boolean;
+  isNew?: boolean;
+  /** When true, only products with stock > 0. */
+  inStock?: boolean;
+  /** When true, only products with stock <= 0 (sold out). */
+  outOfStock?: boolean;
+  /** Storefront listing bucket: discounted, newest slice, or the rest. */
+  listing?: 'discount' | 'new' | 'other';
+  /** newest | discount | bestsellers | price_asc | price_desc */
+  sort?: string;
+  page?: number;
+  limit?: number;
+  includeInactive?: boolean;
+  /** When set, overrides includeInactive and returns only this status. */
+  isActive?: boolean;
+  /** Tire specialty filters */
+  tireWidth?: number;
+  tireAspect?: number;
+  tireRim?: number;
+  tireBrand?: string;
+  tireCountry?: string;
+  tireSeason?: string;
+  tireYear?: number;
+  tireLoadIndex?: string;
+  tireSpeedIndex?: string;
+  tireUsageType?: string;
+  tirePattern?: string;
+  tireTubeless?: boolean;
+  tireRunFlat?: boolean;
+  tireSizeIds?: string[];
+  priceMin?: number;
+  priceMax?: number;
+  minDiscountPercent?: number;
+}
+
+const productInclude = {
+  category: { select: { id: true, name: true, slug: true } },
+  tag: { select: { id: true, name: true, slug: true, icon: true } },
+  productCategories: {
+    include: { category: { select: { id: true, name: true, slug: true } } },
+  },
+  productTags: {
+    include: {
+      tag: { select: { id: true, name: true, slug: true, icon: true, categoryId: true } },
+    },
+  },
+  images: { orderBy: { sortOrder: 'asc' as const } },
+};
+
+/** لیست‌ها / فید — بدون بار اضافه برای پنل و جزئیات کامل. */
+const productListInclude = {
+  category: { select: { id: true, name: true, slug: true } },
+  tag: { select: { id: true, name: true, slug: true, icon: true } },
+  images: { orderBy: { sortOrder: 'asc' as const }, take: 2 },
+};
+
+function uniqueIds(ids?: Array<string | null | undefined>) {
+  return [...new Set((ids ?? []).map((id) => id?.trim()).filter(Boolean))] as string[];
+}
+
+function categoryFilter(categoryId: string) {
+  return {
+    OR: [{ categoryId }, { productCategories: { some: { categoryId } } }],
+  };
+}
+
+function tagFilter(tagId: string) {
+  return {
+    OR: [{ tagId }, { productTags: { some: { tagId } } }],
+  };
+}
+
+function textContains(value: string) {
+  return { contains: value };
+}
+
+function buildSearchClause(search: string) {
+  let terms = searchTermsFromQuery(search);
+
+  // Pasted titles can be long; keep distinctive terms so AND stays useful.
+  if (terms.length > 5) {
+    const digitTerms = terms.filter((t) => /^\d+$/.test(t));
+    const wordTerms = terms
+      .filter((t) => !/^\d+$/.test(t))
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 4);
+    terms = [...new Set([...digitTerms, ...wordTerms])];
+  }
+
+  if (!terms.length) return null;
+
+  // Every kept word must match somewhere (AND of ORs).
+  return {
+    AND: terms.map((term) => {
+      const variants = searchTermVariants(term);
+      return {
+        OR: variants.flatMap((variant) => [
+          { name: textContains(variant) },
+          { description: textContains(variant) },
+          { slug: textContains(variant) },
+          { barcode: textContains(variant) },
+          { category: { name: textContains(variant) } },
+          { tag: { name: textContains(variant) } },
+          { productCategories: { some: { category: { name: textContains(variant) } } } },
+          { productTags: { some: { tag: { name: textContains(variant) } } } },
+        ]),
+      };
+    }),
+  };
+}
+
+function normalizeImages(images?: string[], image?: string | null): string[] {
+  const list = (images?.length ? images : image ? [image] : [])
+    .map((url) => url.trim())
+    .filter(Boolean);
+  return [...new Set(list)];
+}
+
+export class ProductService {
+  async getAll(filters: ProductFilters = {}) {
+    const {
+      categoryId,
+      categorySlug,
+      tagId,
+      ids,
+      search,
+      barcode,
+      expiringBefore,
+      expiringAfter,
+      featured,
+      discounted,
+      homeDeal,
+      homeFeatured,
+      isNew,
+      inStock,
+      outOfStock,
+      listing,
+      sort,
+      page = 1,
+      limit = 20,
+      includeInactive = false,
+      isActive,
+      tireWidth,
+      tireAspect,
+      tireRim,
+      tireBrand,
+      tireCountry,
+      tireSeason,
+      tireYear,
+      tireLoadIndex,
+      tireSpeedIndex,
+      tireUsageType,
+      tirePattern,
+      tireTubeless,
+      tireRunFlat,
+      tireSizeIds,
+      priceMin,
+      priceMax,
+      minDiscountPercent,
+    } = filters;
+
+    const where: Record<string, unknown> = {};
+    const andFilters: Record<string, unknown>[] = [];
+
+    if (typeof isActive === 'boolean') where.isActive = isActive;
+    else if (!includeInactive) where.isActive = true;
+    if (categoryId) andFilters.push(categoryFilter(categoryId));
+    if (tagId) andFilters.push(tagFilter(tagId));
+    if (ids?.length) where.id = { in: ids };
+    if (categorySlug) {
+      andFilters.push({
+        OR: [
+          { category: { slug: categorySlug } },
+          { productCategories: { some: { category: { slug: categorySlug } } } },
+        ],
+      });
+    }
+    if (featured) where.isFeatured = true;
+    if (isNew) where.isNew = true;
+    if (outOfStock) where.stock = { lte: 0 };
+    else if (inStock) where.stock = { gt: 0 };
+    if (discounted || listing === 'discount') where.discountPrice = { not: null };
+    if (homeDeal) where.isHomeDeal = true;
+    if (homeFeatured) where.isHomeFeatured = true;
+    if (typeof tireWidth === 'number') where.tireWidth = tireWidth;
+    if (typeof tireAspect === 'number') where.tireAspect = tireAspect;
+    if (typeof tireRim === 'number') where.tireRim = tireRim;
+    if (tireBrand?.trim()) where.tireBrand = tireBrand.trim();
+    if (tireCountry?.trim()) where.tireCountry = tireCountry.trim();
+    if (tireSeason?.trim()) {
+      const season = tireSeason.trim();
+      andFilters.push({
+        OR: [
+          { tireSeason: season },
+          { tireSeason: season.toLowerCase() },
+          { tireSeason: season.toUpperCase() },
+          { tireSeason: season.replace(/-/g, '_') },
+          { tireSeason: season.replace(/_/g, '-') },
+        ],
+      });
+    }
+    if (typeof tireYear === 'number') where.tireYear = tireYear;
+    if (tireLoadIndex?.trim()) where.tireLoadIndex = tireLoadIndex.trim();
+    if (tireSpeedIndex?.trim()) where.tireSpeedIndex = tireSpeedIndex.trim();
+    if (tireUsageType?.trim()) {
+      const usage = tireUsageType.trim();
+      andFilters.push({
+        OR: [
+          { tireUsageType: usage },
+          { tireUsageType: usage.toLowerCase() },
+          { tireUsageType: usage.toUpperCase() },
+          { tireUsageType: usage.replace(/-/g, '_') },
+          { tireUsageType: usage.replace(/_/g, '-') },
+        ],
+      });
+    }
+    if (tirePattern?.trim()) where.tirePattern = { contains: tirePattern.trim() };
+    if (typeof tireTubeless === 'boolean') where.tireTubeless = tireTubeless;
+    if (typeof tireRunFlat === 'boolean') where.tireRunFlat = tireRunFlat;
+    if (tireSizeIds?.length) where.tireSizeId = { in: tireSizeIds };
+    if (typeof priceMin === 'number' || typeof priceMax === 'number') {
+      where.price = {
+        ...(typeof priceMin === 'number' ? { gte: priceMin } : {}),
+        ...(typeof priceMax === 'number' ? { lte: priceMax } : {}),
+      };
+    }
+    if (typeof minDiscountPercent === 'number' && minDiscountPercent > 0) {
+      andFilters.push({ discountPrice: { not: null } });
+    }
+    if (barcode?.trim()) {
+      const barcodeVariants = searchTermVariants(barcode.trim());
+      andFilters.push({
+        OR: barcodeVariants.map((variant) => ({ barcode: textContains(variant) })),
+      });
+    }
+    if (expiringBefore || expiringAfter) {
+      where.expiryDate = {
+        ...(expiringAfter ? { gte: new Date(expiringAfter) } : {}),
+        ...(expiringBefore ? { lte: new Date(`${expiringBefore}T23:59:59.999Z`) } : {}),
+      };
+    }
+    if (search) {
+      const searchClause = buildSearchClause(search);
+      if (searchClause) andFilters.push(searchClause);
+    }
+    if (andFilters.length) where.AND = andFilters;
+
+    const sortMode = this.normalizeSort(sort);
+    const listingBucket = listing === 'new' || listing === 'other';
+    const applyHolds = !includeInactive;
+    const hasTireFilters = Boolean(
+      tireWidth ||
+        tireAspect ||
+        tireRim ||
+        tireBrand ||
+        tireCountry ||
+        tireSeason ||
+        tireYear ||
+        tireLoadIndex ||
+        tireSpeedIndex ||
+        tireUsageType ||
+        tirePattern ||
+        tireTubeless !== undefined ||
+        tireRunFlat !== undefined ||
+        tireSizeIds?.length ||
+        priceMin !== undefined ||
+        priceMax !== undefined ||
+        minDiscountPercent
+    );
+    // Holds change every few minutes — don't serve stale availability from cache.
+    const skipCache = Boolean(
+      applyHolds ||
+        search ||
+        includeInactive ||
+        barcode ||
+        inStock ||
+        outOfStock ||
+        sortMode !== 'newest' ||
+        listingBucket ||
+        hasTireFilters
+    );
+    const cacheKey = `products:${JSON.stringify(filters)}`;
+    if (!skipCache) {
+      const cached = await cacheGet<unknown>(cacheKey);
+      if (cached) return cached;
+    }
+
+    const demoteOutOfStock = !includeInactive && !inStock && !outOfStock;
+    const needsCustomSort =
+      sortMode === 'discount' ||
+      sortMode === 'bestsellers' ||
+      sortMode === 'price_asc' ||
+      sortMode === 'price_desc' ||
+      listingBucket ||
+      demoteOutOfStock ||
+      applyHolds ||
+      Boolean(minDiscountPercent);
+
+    const orderBy = homeDeal
+      ? [{ homeDealSort: 'asc' as const }, { createdAt: 'desc' as const }]
+      : homeFeatured
+        ? [{ homeFeaturedSort: 'asc' as const }, { createdAt: 'desc' as const }]
+        : featured
+          ? [{ homeFeaturedSort: 'asc' as const }, { createdAt: 'desc' as const }]
+          : outOfStock
+            ? [{ updatedAt: 'desc' as const }, { createdAt: 'desc' as const }]
+            : { createdAt: 'desc' as const };
+
+    const holds = applyHolds ? await cartService.getActiveHoldQuantities() : undefined;
+
+    if (needsCustomSort) {
+      // When filtering "in stock", DB stock>0 still includes held items — resolve after holds.
+      const whereForLoad =
+        applyHolds && inStock
+          ? (() => {
+              const { stock: _stock, ...rest } = where as Record<string, unknown>;
+              return rest;
+            })()
+          : where;
+
+      const allProducts = await prisma.product.findMany({
+        where: whereForLoad,
+        include: productListInclude,
+        orderBy,
+      });
+      const bucketed = listingBucket ? this.applyListingBucket(allProducts, listing) : allProducts;
+      let ordered =
+        sortMode === 'newest' ? bucketed : await this.applyCustomSort(bucketed, sortMode);
+
+      let formatted = ordered.map((product) => this.formatProduct(product, holds));
+      if (applyHolds && inStock) {
+        formatted = formatted.filter((product) => product.inStock);
+      }
+      if (typeof minDiscountPercent === 'number' && minDiscountPercent > 0) {
+        formatted = formatted.filter((product) => product.discountPercent >= minDiscountPercent);
+      }
+      // Sold-out / held items stay visible but sink to the end until free again.
+      if (demoteOutOfStock) formatted = this.pushOutOfStockLast(formatted);
+
+      const total = formatted.length;
+      const pageItems = formatted.slice((page - 1) * limit, page * limit);
+      const result = {
+        products: pageItems,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+      };
+      if (!skipCache) {
+        await cacheSet(cacheKey, result, 300);
+      }
+      return result;
+    }
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        include: productListInclude,
+        orderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    const formatted = products.map((product) => this.formatProduct(product, holds));
+    const result = {
+      products: formatted,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+
+    if (!skipCache) {
+      await cacheSet(cacheKey, result, 300);
+    }
+    return result;
+  }
+
+  private applyListingBucket<T extends { id: string; discountPrice: unknown | null }>(
+    products: T[],
+    listing: 'new' | 'other'
+  ) {
+    const freshCount = Math.max(1, Math.round(products.length * 0.2));
+    const freshIds = new Set(products.slice(0, freshCount).map((product) => product.id));
+    if (listing === 'new') return products.filter((product) => freshIds.has(product.id));
+    return products.filter((product) => !freshIds.has(product.id) && product.discountPrice == null);
+  }
+
+  private normalizeSort(
+    sort?: string
+  ): 'newest' | 'discount' | 'bestsellers' | 'price_asc' | 'price_desc' {
+    if (
+      sort === 'discount' ||
+      sort === 'bestsellers' ||
+      sort === 'price_asc' ||
+      sort === 'price_desc'
+    ) {
+      return sort;
+    }
+    return 'newest';
+  }
+
+  /** Keep relative order, but move stock=0 products to the end (until restocked). */
+  private pushOutOfStockLast<T extends { stock?: number; inStock?: boolean }>(products: T[]): T[] {
+    const available: T[] = [];
+    const soldOut: T[] = [];
+    for (const product of products) {
+      const ok = typeof product.inStock === 'boolean' ? product.inStock : (product.stock ?? 0) > 0;
+      (ok ? available : soldOut).push(product);
+    }
+    return [...available, ...soldOut];
+  }
+
+  private async applyCustomSort<T extends { id: string; price: unknown; discountPrice: unknown | null; createdAt: Date }>(
+    products: T[],
+    sortMode: 'discount' | 'bestsellers' | 'price_asc' | 'price_desc'
+  ): Promise<T[]> {
+    if (sortMode === 'discount') {
+      return [...products].sort((a, b) => {
+        const aPct = this.rawDiscountPercent(a.price, a.discountPrice);
+        const bPct = this.rawDiscountPercent(b.price, b.discountPrice);
+        if (bPct !== aPct) return bPct - aPct;
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      });
+    }
+
+    if (sortMode === 'price_asc' || sortMode === 'price_desc') {
+      return [...products].sort((a, b) => {
+        const aPrice = Number(a.discountPrice ?? a.price);
+        const bPrice = Number(b.discountPrice ?? b.price);
+        return sortMode === 'price_asc' ? aPrice - bPrice : bPrice - aPrice;
+      });
+    }
+
+    const sales = await prisma.orderItem.groupBy({
+      by: ['productId'],
+      where: {
+        productId: { in: products.map((product) => product.id) },
+        order: { status: { notIn: ['CANCELLED'] } },
+      },
+      _sum: { quantity: true },
+    });
+    const soldById = new Map(sales.map((row) => [row.productId, row._sum.quantity ?? 0]));
+
+    return [...products].sort((a, b) => {
+      const soldDiff = (soldById.get(b.id) ?? 0) - (soldById.get(a.id) ?? 0);
+      if (soldDiff !== 0) return soldDiff;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
+  }
+
+  private rawDiscountPercent(price: unknown, discountPrice: unknown | null) {
+    const p = Number(price);
+    const d = discountPrice != null ? Number(discountPrice) : null;
+    if (!d || !p || d >= p) return 0;
+    return Math.round(((p - d) / p) * 100);
+  }
+
+  async getBySlug(slug: string) {
+    const product = await prisma.product.findUnique({
+      where: { slug, isActive: true },
+      include: {
+        ...productInclude,
+        discounts: { where: { isActive: true } },
+      },
+    });
+    if (!product) throw new AppError(404, 'محصول یافت نشد');
+    const holds = await cartService.getActiveHoldQuantities();
+    return this.formatProduct(product, holds);
+  }
+
+  async getById(id: string) {
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: productInclude,
+    });
+    if (!product) throw new AppError(404, 'محصول یافت نشد');
+    return product;
+  }
+
+  async create(data: {
+    name: string;
+    description?: string;
+    barcode?: string | null;
+    productionDate?: string | Date | null;
+    expiryDate?: string | Date | null;
+    price: number;
+    discountPrice?: number;
+    stock: number;
+    image?: string | null;
+    images?: string[];
+    unit?: string;
+    clothingMeta?: unknown;
+    tireMeta?: TireMetaInput | null;
+    tireWidth?: number | null;
+    tireAspect?: number | null;
+    tireRim?: number | null;
+    tireSizeLabel?: string | null;
+    tireBrand?: string | null;
+    tireCountry?: string | null;
+    tireSeason?: string | null;
+    tirePattern?: string | null;
+    tireLoadIndex?: string | null;
+    tireSpeedIndex?: string | null;
+    tireYear?: number | null;
+    tireTubeless?: boolean | null;
+    tireRunFlat?: boolean | null;
+    tireUsageType?: string | null;
+    tireSizeId?: string | null;
+    seoTitle?: string | null;
+    seoDescription?: string | null;
+    categoryId?: string;
+    categoryIds?: string[];
+    tagId?: string | null;
+    tagIds?: string[];
+    isFeatured?: boolean;
+    isNew?: boolean;
+    isOldPrice?: boolean;
+    isHomeDeal?: boolean;
+    isHomeFeatured?: boolean;
+  }) {
+    const { images, image, productionDate, expiryDate, barcode, categoryIds, tagIds, tireMeta, ...rest } = data;
+    const imageList = normalizeImages(images, image);
+    const slug = slugify(data.name) + '-' + Date.now().toString(36);
+    const resolvedCategoryIds = this.resolveCategoryIds(categoryIds, rest.categoryId);
+    const resolvedTagIds = this.resolveTagIds(tagIds, rest.tagId);
+    const tireFields = resolveTireFields({ ...rest, tireMeta: tireMeta ?? null });
+
+    const product = await prisma.product.create({
+      data: {
+        ...rest,
+        ...tireFields,
+        tireMeta: tireFields.tireMeta as Prisma.InputJsonValue,
+        categoryId: resolvedCategoryIds[0],
+        tagId: resolvedTagIds[0] ?? null,
+        barcode: barcode?.trim() || null,
+        productionDate: productionDate ? new Date(productionDate) : null,
+        expiryDate: expiryDate ? new Date(expiryDate) : null,
+        slug,
+        image: imageList[0] ?? null,
+        images: {
+          create: imageList.map((url, index) => ({ url, sortOrder: index })),
+        },
+      },
+      include: productInclude,
+    });
+
+    await this.syncProductAssociations(product.id, resolvedCategoryIds, resolvedTagIds);
+
+    await cacheDel('products:*');
+    await cacheDel('home:*');
+    return this.formatProduct(
+      await prisma.product.findUniqueOrThrow({ where: { id: product.id }, include: productInclude })
+    );
+  }
+
+  async update(id: string, data: Record<string, unknown>) {
+    const { images, image, productionDate, expiryDate, barcode, categoryIds, tagIds, tireMeta, ...rest } = data;
+    const tireTouched =
+      tireMeta !== undefined ||
+      rest.tireWidth !== undefined ||
+      rest.tireAspect !== undefined ||
+      rest.tireRim !== undefined ||
+      rest.tireSizeLabel !== undefined ||
+      rest.tireBrand !== undefined ||
+      rest.tireCountry !== undefined ||
+      rest.tireSeason !== undefined ||
+      rest.tirePattern !== undefined ||
+      rest.tireLoadIndex !== undefined ||
+      rest.tireSpeedIndex !== undefined ||
+      rest.tireYear !== undefined ||
+      rest.tireTubeless !== undefined ||
+      rest.tireRunFlat !== undefined ||
+      rest.tireUsageType !== undefined ||
+      rest.tireSizeId !== undefined;
+
+    const tireFields = tireTouched
+      ? resolveTireFields({
+          tireMeta: (tireMeta as TireMetaInput | null | undefined) ?? null,
+          tireWidth: rest.tireWidth as number | null | undefined,
+          tireAspect: rest.tireAspect as number | null | undefined,
+          tireRim: rest.tireRim as number | null | undefined,
+          tireSizeLabel: rest.tireSizeLabel as string | null | undefined,
+          tireBrand: rest.tireBrand as string | null | undefined,
+          tireCountry: rest.tireCountry as string | null | undefined,
+          tireSeason: rest.tireSeason as string | null | undefined,
+          tirePattern: rest.tirePattern as string | null | undefined,
+          tireLoadIndex: rest.tireLoadIndex as string | null | undefined,
+          tireSpeedIndex: rest.tireSpeedIndex as string | null | undefined,
+          tireYear: rest.tireYear as number | null | undefined,
+          tireTubeless: rest.tireTubeless as boolean | null | undefined,
+          tireRunFlat: rest.tireRunFlat as boolean | null | undefined,
+          tireUsageType: rest.tireUsageType as string | null | undefined,
+          tireSizeId: rest.tireSizeId as string | null | undefined,
+        })
+      : null;
+
+    const updateData: Record<string, unknown> = {
+      ...rest,
+      ...(tireFields
+        ? { ...tireFields, tireMeta: tireFields.tireMeta as Prisma.InputJsonValue }
+        : {}),
+    };
+
+    const hasCategoryIds = categoryIds !== undefined || rest.categoryId !== undefined;
+    const hasTagIds = tagIds !== undefined || rest.tagId !== undefined;
+    const resolvedCategoryIds = hasCategoryIds
+      ? this.resolveCategoryIds(categoryIds as string[] | undefined, rest.categoryId as string | undefined)
+      : undefined;
+    const resolvedTagIds = hasTagIds
+      ? this.resolveTagIds(tagIds as string[] | undefined, rest.tagId as string | null | undefined)
+      : undefined;
+
+    if (resolvedCategoryIds !== undefined) {
+      updateData.categoryId = resolvedCategoryIds[0];
+    }
+    if (resolvedTagIds !== undefined) {
+      updateData.tagId = resolvedTagIds[0] ?? null;
+    }
+
+    if (barcode !== undefined) {
+      updateData.barcode = typeof barcode === 'string' && barcode.trim() ? barcode.trim() : null;
+    }
+    if (productionDate !== undefined) {
+      updateData.productionDate = productionDate ? new Date(String(productionDate)) : null;
+    }
+    if (expiryDate !== undefined) {
+      updateData.expiryDate = expiryDate ? new Date(String(expiryDate)) : null;
+    }
+
+    if (images !== undefined || image !== undefined) {
+      const imageList = normalizeImages(
+        images as string[] | undefined,
+        image as string | null | undefined
+      );
+
+      await prisma.productImage.deleteMany({ where: { productId: id } });
+      if (imageList.length) {
+        await prisma.productImage.createMany({
+          data: imageList.map((url, index) => ({ productId: id, url, sortOrder: index })),
+        });
+      }
+
+      updateData.image = imageList[0] ?? null;
+    }
+
+    const product = await prisma.product.update({
+      where: { id },
+      data: updateData,
+      include: productInclude,
+    });
+
+    if (resolvedCategoryIds !== undefined || resolvedTagIds !== undefined) {
+      await this.syncProductAssociations(
+        id,
+        resolvedCategoryIds ?? (await this.getProductCategoryIds(id)),
+        resolvedTagIds ?? (await this.getProductTagIds(id))
+      );
+    }
+
+    await cacheDel('products:*');
+    await cacheDel('home:*');
+    return this.formatProduct(
+      await prisma.product.findUniqueOrThrow({ where: { id }, include: productInclude })
+    );
+  }
+
+  async delete(id: string) {
+    await prisma.product.update({ where: { id }, data: { isActive: false } });
+    await cacheDel('products:*');
+    await cacheDel('home:*');
+  }
+
+  /** Soft-delete many products (hide from storefront). Returns how many were updated. */
+  async deleteMany(ids: string[]) {
+    const uniqueIds = [...new Set(ids.map((id) => String(id || '').trim()).filter(Boolean))];
+    if (!uniqueIds.length) {
+      throw new AppError(400, 'هیچ محصولی برای حذف انتخاب نشده است');
+    }
+    if (uniqueIds.length > 200) {
+      throw new AppError(400, 'حداکثر ۲۰۰ محصول در هر بار قابل حذف است');
+    }
+
+    const result = await prisma.product.updateMany({
+      where: { id: { in: uniqueIds }, isActive: true },
+      data: { isActive: false },
+    });
+    await cacheDel('products:*');
+    await cacheDel('home:*');
+    return { requested: uniqueIds.length, deleted: result.count };
+  }
+
+  async getHomePicks() {
+    const [discounted, featured] = await Promise.all([
+      prisma.product.findMany({
+        where: { isHomeDeal: true },
+        include: productListInclude,
+        orderBy: [{ homeDealSort: 'asc' }, { createdAt: 'desc' }],
+        take: 10,
+      }),
+      prisma.product.findMany({
+        where: { isHomeFeatured: true },
+        include: productListInclude,
+        orderBy: [{ homeFeaturedSort: 'asc' }, { createdAt: 'desc' }],
+        take: 10,
+      }),
+    ]);
+
+    return {
+      discounted: discounted.map((product) => this.formatProduct(product)),
+      featured: featured.map((product) => this.formatProduct(product)),
+    };
+  }
+
+  async setHomePicks(data: { discountedIds?: string[]; featuredIds?: string[] }) {
+    const updateDiscounted = data.discountedIds !== undefined;
+    const updateFeatured = data.featuredIds !== undefined;
+    const discountedIds = updateDiscounted ? this.normalizeHomePickIds(data.discountedIds) : [];
+    const featuredIds = updateFeatured ? this.normalizeHomePickIds(data.featuredIds) : [];
+
+    await this.assertProductsExist([...new Set([...discountedIds, ...featuredIds])]);
+
+    const operations = [
+      ...(updateDiscounted
+        ? [
+            prisma.product.updateMany({
+              where: { isHomeDeal: true },
+              data: { isHomeDeal: false, homeDealSort: 0 },
+            }),
+            ...discountedIds.map((id, index) =>
+              prisma.product.update({
+                where: { id },
+                data: { isHomeDeal: true, homeDealSort: index },
+              })
+            ),
+          ]
+        : []),
+      ...(updateFeatured
+        ? [
+            prisma.product.updateMany({
+              where: { isHomeFeatured: true },
+              data: { isHomeFeatured: false, homeFeaturedSort: 0 },
+            }),
+            ...featuredIds.map((id, index) =>
+              prisma.product.update({
+                where: { id },
+                data: { isHomeFeatured: true, homeFeaturedSort: index },
+              })
+            ),
+          ]
+        : []),
+    ];
+
+    if (operations.length) {
+      await prisma.$transaction(operations);
+    }
+
+    await cacheDel('products:*');
+    await cacheDel('home:*');
+    return this.getHomePicks();
+  }
+
+  async getCategoryFeedPicks(categoryId: string) {
+    const category = await prisma.category.findUnique({ where: { id: categoryId } });
+    if (!category) throw new AppError(404, 'دسته‌بندی یافت نشد');
+
+    const picks = await prisma.categoryFeedProduct.findMany({
+      where: { categoryId },
+      orderBy: { sortOrder: 'asc' },
+      include: { product: { include: productInclude } },
+    });
+
+    return {
+      category: {
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+      },
+      feedSortMode: category.feedSortMode,
+      products: picks
+        .filter((row) => row.product.isActive)
+        .map((row) => this.formatProduct(row.product)),
+    };
+  }
+
+  async setCategoryFeedPicks(
+    categoryId: string,
+    data: { feedSortMode?: CategoryFeedSortMode; productIds?: string[] }
+  ) {
+    const category = await prisma.category.findUnique({ where: { id: categoryId } });
+    if (!category) throw new AppError(404, 'دسته‌بندی یافت نشد');
+
+    const productIds =
+      data.productIds !== undefined ? this.normalizeHomePickIds(data.productIds) : undefined;
+
+    if (productIds !== undefined) {
+      await this.assertProductsInCategory(categoryId, productIds);
+    }
+
+    const operations: Prisma.PrismaPromise<unknown>[] = [];
+
+    if (data.feedSortMode !== undefined) {
+      operations.push(
+        prisma.category.update({
+          where: { id: categoryId },
+          data: { feedSortMode: data.feedSortMode },
+        })
+      );
+    }
+
+    if (productIds !== undefined) {
+      operations.push(prisma.categoryFeedProduct.deleteMany({ where: { categoryId } }));
+      productIds.forEach((productId, index) => {
+        operations.push(
+          prisma.categoryFeedProduct.create({
+            data: { categoryId, productId, sortOrder: index },
+          })
+        );
+      });
+    }
+
+    if (operations.length) {
+      await prisma.$transaction(operations);
+    }
+
+    await cacheDel('home:*');
+    await cacheDel('categories:*');
+    return this.getCategoryFeedPicks(categoryId);
+  }
+
+  private async assertProductsInCategory(categoryId: string, productIds: string[]) {
+    if (!productIds.length) return;
+    const count = await prisma.product.count({
+      where: {
+        id: { in: productIds },
+        isActive: true,
+        ...categoryFilter(categoryId),
+      },
+    });
+    if (count !== productIds.length) {
+      throw new AppError(400, 'برخی محصولات به این دسته‌بندی تعلق ندارند');
+    }
+  }
+
+  private normalizeHomePickIds(ids?: string[]) {
+    const unique = [...new Set((ids ?? []).map((id) => id.trim()).filter(Boolean))];
+    if (unique.length > 10) {
+      throw new AppError(400, 'حداکثر ۱۰ محصول برای صفحه اول می‌توانید انتخاب کنید');
+    }
+    return unique;
+  }
+
+  private async assertProductsExist(ids: string[]) {
+    if (!ids.length) return;
+    const count = await prisma.product.count({ where: { id: { in: ids } } });
+    if (count !== ids.length) {
+      throw new AppError(400, 'یکی از محصولات انتخاب‌شده پیدا نشد');
+    }
+  }
+
+  async getHomeSections() {
+    const holds = await cartService.getActiveHoldQuantities();
+    const [featured, discounted, newProducts, homeDeals, homeFeatured] = await Promise.all([
+      prisma.product.findMany({
+        where: { isActive: true, isFeatured: true },
+        include: productListInclude,
+        take: 24,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.product.findMany({
+        where: { isActive: true, discountPrice: { not: null } },
+        include: productListInclude,
+        take: 24,
+        orderBy: { updatedAt: 'desc' },
+      }),
+      prisma.product.findMany({
+        where: { isActive: true, isNew: true },
+        include: productListInclude,
+        take: 24,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.product.findMany({
+        where: { isActive: true, isHomeDeal: true },
+        include: productListInclude,
+        take: 30,
+        orderBy: [{ homeDealSort: 'asc' }, { createdAt: 'desc' }],
+      }),
+      prisma.product.findMany({
+        where: { isActive: true, isHomeFeatured: true },
+        include: productListInclude,
+        take: 30,
+        orderBy: [{ homeFeaturedSort: 'asc' }, { createdAt: 'desc' }],
+      }),
+    ]);
+
+    return {
+      featured: this.pushOutOfStockLast(featured.map((product) => this.formatProduct(product, holds))).slice(0, 8),
+      discounted: this.pushOutOfStockLast(discounted.map((product) => this.formatProduct(product, holds))).slice(0, 8),
+      newProducts: this.pushOutOfStockLast(newProducts.map((product) => this.formatProduct(product, holds))).slice(0, 8),
+      homeDeals: this.pushOutOfStockLast(homeDeals.map((product) => this.formatProduct(product, holds))).slice(0, 10),
+      homeFeatured: this.pushOutOfStockLast(homeFeatured.map((product) => this.formatProduct(product, holds))).slice(0, 10),
+    };
+  }
+
+  async getHomeFeed() {
+    const cacheKey = 'home:feed';
+    const cached = await cacheGet<unknown>(cacheKey);
+    if (cached) return cached;
+    const feed = await this.getHomeFeedUncached();
+    await cacheSet(cacheKey, feed, 30);
+    return feed;
+  }
+
+  private async getHomeFeedUncached() {
+    const categories = await prisma.category.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const categoryIds = categories.map((category) => category.id);
+    if (categoryIds.length === 0) {
+      return [];
+    }
+
+    const holds = await cartService.getActiveHoldQuantities();
+
+    const feedPickRows = await prisma.categoryFeedProduct.findMany({
+      where: { categoryId: { in: categoryIds } },
+      orderBy: { sortOrder: 'asc' },
+      select: { categoryId: true, productId: true, sortOrder: true },
+    });
+
+    const rankedRows = await prisma.$queryRaw<Array<{ id: string; categoryId: string }>>(Prisma.sql`
+      SELECT id, categoryId FROM (
+        SELECT p.id, link.categoryId,
+          ROW_NUMBER() OVER (
+            PARTITION BY link.categoryId
+            ORDER BY CASE WHEN p.stock > 0 THEN 0 ELSE 1 END, p.createdAt DESC
+          ) AS rn
+        FROM products p
+        INNER JOIN (
+          SELECT id AS productId, categoryId FROM products WHERE categoryId IN (${Prisma.join(categoryIds)})
+          UNION
+          SELECT productId, categoryId FROM product_categories WHERE categoryId IN (${Prisma.join(categoryIds)})
+        ) link ON link.productId = p.id
+        WHERE p.isActive = true
+      ) ranked
+      WHERE rn <= 10
+    `);
+
+    const productIds = [
+      ...new Set([...rankedRows.map((row) => row.id), ...feedPickRows.map((row) => row.productId)]),
+    ];
+    if (productIds.length === 0) {
+      return [];
+    }
+
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, isActive: true },
+      include: productListInclude,
+    });
+
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const productsByCategory = new Map<string, ReturnType<typeof this.formatProduct>[]>();
+    const pickIdsByCategory = new Map<string, string[]>();
+
+    for (const row of feedPickRows) {
+      const list = pickIdsByCategory.get(row.categoryId) ?? [];
+      list.push(row.productId);
+      pickIdsByCategory.set(row.categoryId, list);
+    }
+
+    for (const row of rankedRows) {
+      const product = productById.get(row.id);
+      if (!product) continue;
+      const list = productsByCategory.get(row.categoryId) ?? [];
+      list.push(this.formatProduct(product, holds));
+      productsByCategory.set(row.categoryId, list);
+    }
+
+    return categories
+      .map((category) => {
+        const pool = productsByCategory.get(category.id) ?? [];
+        const sectionProducts = this.orderCategoryFeedProducts(
+          category.feedSortMode,
+          pool,
+          pickIdsByCategory.get(category.id) ?? [],
+          productById,
+          holds
+        );
+        return {
+          category: {
+            id: category.id,
+            name: category.name,
+            slug: category.slug,
+            image: category.image,
+          },
+          products: sectionProducts,
+        };
+      })
+      .filter((section) => section.products.length > 0);
+  }
+
+  async getRelatedByTag(productSlug: string, limit = 8) {
+    const product = await prisma.product.findUnique({
+      where: { slug: productSlug, isActive: true },
+      select: { id: true, tagId: true, categoryId: true },
+    });
+    if (!product) throw new AppError(404, 'محصول یافت نشد');
+
+    const where: Record<string, unknown> = {
+      isActive: true,
+      id: { not: product.id },
+    };
+
+    if (product.tagId) {
+      where.OR = [
+        { tagId: product.tagId },
+        { productTags: { some: { tagId: product.tagId } } },
+      ];
+    } else {
+      Object.assign(where, categoryFilter(product.categoryId));
+    }
+
+    const related = await prisma.product.findMany({
+      where,
+      include: productListInclude,
+      take: Math.max(limit * 3, 24),
+      orderBy: { createdAt: 'desc' },
+    });
+    const holds = await cartService.getActiveHoldQuantities();
+
+    return this.pushOutOfStockLast(related.map((p) => this.formatProduct(p, holds))).slice(0, limit);
+  }
+
+  private orderCategoryFeedProducts(
+    mode: CategoryFeedSortMode,
+    pool: ReturnType<typeof this.formatProduct>[],
+    pickIds: string[],
+    productById: Map<string, Parameters<ProductService['formatProduct']>[0]>,
+    holds?: Map<string, number>
+  ) {
+    const limit = 10;
+
+    if (mode === CategoryFeedSortMode.MANUAL && pickIds.length > 0) {
+      const picked = pickIds
+        .map((id) => productById.get(id))
+        .filter(Boolean)
+        .map((product) => this.formatProduct(product!, holds));
+      const pickedSet = new Set(picked.map((product) => product.id));
+      const fill = pool.filter((product) => !pickedSet.has(product.id));
+      return this.pushOutOfStockLast([...picked, ...fill]).slice(0, limit);
+    }
+
+    if (mode === CategoryFeedSortMode.DISCOUNT) {
+      return this.pushOutOfStockLast(this.sortByDiscountPercent(pool)).slice(0, limit);
+    }
+
+    // NEWEST (default): SQL already ranks in-stock first, then createdAt DESC
+    return this.pushOutOfStockLast(pool).slice(0, limit);
+  }
+
+  private sortByDiscountPercent<T extends { discountPercent?: number; effectivePrice?: number }>(
+    products: T[]
+  ): T[] {
+    return [...products].sort((a, b) => {
+      const diff = (b.discountPercent ?? 0) - (a.discountPercent ?? 0);
+      if (diff !== 0) return diff;
+      return (a.effectivePrice ?? 0) - (b.effectivePrice ?? 0);
+    });
+  }
+
+  formatProductPublic(product: Parameters<ProductService['formatProduct']>[0]) {
+    return this.formatProduct(product);
+  }
+
+  private resolveCategoryIds(categoryIds?: string[], categoryId?: string) {
+    const resolved = uniqueIds(categoryIds?.length ? categoryIds : categoryId ? [categoryId] : []);
+    if (!resolved.length) {
+      throw new AppError(400, 'حداقل یک دسته‌بندی لازم است');
+    }
+    return resolved;
+  }
+
+  private resolveTagIds(tagIds?: string[], tagId?: string | null) {
+    return uniqueIds(tagIds?.length ? tagIds : tagId ? [tagId] : []);
+  }
+
+  private async getProductCategoryIds(productId: string) {
+    const rows = await prisma.productCategory.findMany({
+      where: { productId },
+      select: { categoryId: true },
+    });
+    return rows.map((row) => row.categoryId);
+  }
+
+  private async getProductTagIds(productId: string) {
+    const rows = await prisma.productTag.findMany({
+      where: { productId },
+      select: { tagId: true },
+    });
+    return rows.map((row) => row.tagId);
+  }
+
+  private async syncProductAssociations(
+    productId: string,
+    categoryIds: string[],
+    tagIds: string[]
+  ) {
+    const uniqueCategoryIds = uniqueIds(categoryIds);
+    const uniqueTagIds = uniqueIds(tagIds);
+
+    if (!uniqueCategoryIds.length) {
+      throw new AppError(400, 'حداقل یک دسته‌بندی لازم است');
+    }
+
+    await prisma.$transaction([
+      prisma.productCategory.deleteMany({ where: { productId } }),
+      prisma.productTag.deleteMany({ where: { productId } }),
+      prisma.productCategory.createMany({
+        data: uniqueCategoryIds.map((categoryId) => ({ productId, categoryId })),
+      }),
+      ...(uniqueTagIds.length
+        ? [
+            prisma.productTag.createMany({
+              data: uniqueTagIds.map((tagId) => ({ productId, tagId })),
+            }),
+          ]
+        : []),
+      prisma.product.update({
+        where: { id: productId },
+        data: {
+          categoryId: uniqueCategoryIds[0],
+          tagId: uniqueTagIds[0] ?? null,
+        },
+      }),
+    ]);
+  }
+
+  private formatProduct(
+    product: {
+      id: string;
+      name: string;
+      slug: string;
+      description: string | null;
+      barcode?: string | null;
+      productionDate?: Date | null;
+      expiryDate?: Date | null;
+      clothingMeta?: unknown;
+      tireMeta?: unknown;
+      tireWidth?: number | null;
+      tireAspect?: number | null;
+      tireRim?: number | null;
+      tireSizeLabel?: string | null;
+      tireBrand?: string | null;
+      tireCountry?: string | null;
+      tireSeason?: string | null;
+      tirePattern?: string | null;
+      tireLoadIndex?: string | null;
+      tireSpeedIndex?: string | null;
+      tireYear?: number | null;
+      tireTubeless?: boolean | null;
+      tireRunFlat?: boolean | null;
+      tireUsageType?: string | null;
+      tireSizeId?: string | null;
+      seoTitle?: string | null;
+      seoDescription?: string | null;
+      price: unknown;
+      discountPrice: unknown | null;
+      stock: number;
+      image: string | null;
+      unit: string | null;
+      isActive: boolean;
+      isFeatured: boolean;
+      isNew: boolean;
+      isOldPrice: boolean;
+      isHomeDeal?: boolean;
+      homeDealSort?: number;
+      isHomeFeatured?: boolean;
+      homeFeaturedSort?: number;
+      categoryId: string;
+      tagId?: string | null;
+      category?: { id: string; name: string; slug: string };
+      tag?: { id: string; name: string; slug: string; icon: string | null } | null;
+      productCategories?: Array<{ category: { id: string; name: string; slug: string } }>;
+      productTags?: Array<{
+        tag: { id: string; name: string; slug: string; icon: string | null; categoryId: string };
+      }>;
+      images?: { url: string; sortOrder: number }[];
+      createdAt: Date;
+      updatedAt: Date;
+      ratingAvg?: number | null;
+      ratingCount?: number | null;
+    },
+    holds?: Map<string, number>
+  ) {
+    const price = Number(product.price);
+    const discountPrice = product.discountPrice ? Number(product.discountPrice) : null;
+    const effectivePrice = discountPrice ?? price;
+    const discountPercent =
+      discountPrice && price > 0 ? Math.round(((price - discountPrice) / price) * 100) : 0;
+    const imageUrls = product.images?.map((item) => item.url) ?? [];
+    const images = imageUrls.length ? imageUrls : product.image ? [product.image] : [];
+    const primaryImage = images[0] ?? null;
+    const categories =
+      product.productCategories?.map((item) => item.category) ??
+      (product.category ? [product.category] : []);
+    const tags =
+      product.productTags?.map((item) => item.tag) ??
+      (product.tag ? [product.tag] : []);
+    const categoryIds = categories.map((item) => item.id);
+    const tagIds = tags.map((item) => item.id);
+    const primaryCategory = categories[0] ?? product.category ?? null;
+    const primaryTag = tags[0] ?? product.tag ?? null;
+
+    const heldQty = holds?.get(product.id) ?? 0;
+    const availableStock = Math.max(0, product.stock - heldQty);
+    const isHeld = product.stock > 0 && availableStock <= 0 && heldQty > 0;
+    const tireMeta =
+      product.tireMeta && typeof product.tireMeta === 'object'
+        ? (product.tireMeta as TireMetaInput)
+        : null;
+    const bundles = computeBundlePrices(effectivePrice, tireMeta);
+
+    const { productCategories, productTags, category, tag, ...restProduct } = product;
+
+    return {
+      ...restProduct,
+      image: primaryImage,
+      images,
+      price,
+      discountPrice,
+      effectivePrice,
+      discountPercent,
+      pairPrice: bundles.pairPrice,
+      setPrice: bundles.setPrice,
+      // Storefront sees remaining sellable qty after active cart holds.
+      stock: holds ? availableStock : product.stock,
+      warehouseStock: product.stock,
+      heldQuantity: heldQty,
+      inStock: availableStock > 0,
+      isHeld,
+      holdMessage: isHeld ? PRODUCT_HOLD_MESSAGE : null,
+      ratingAvg: Math.round(Number(product.ratingAvg ?? 0) * 10) / 10,
+      ratingCount: Number(product.ratingCount ?? 0),
+      categories,
+      tags,
+      categoryIds,
+      tagIds,
+      category: primaryCategory,
+      tag: primaryTag,
+      categoryId: primaryCategory?.id ?? product.categoryId,
+      tagId: primaryTag?.id ?? product.tagId ?? null,
+    };
+  }
+}
+
+export const productService = new ProductService();

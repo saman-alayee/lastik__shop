@@ -1,0 +1,317 @@
+<script setup lang="ts">
+import type { Product, Pagination } from '~/types';
+import { DEMO_PRODUCTS } from '~/constants/demoCatalog';
+import { normalizeSearchText, stripInvisibleChars } from '~/utils/normalize';
+
+const route = useRoute();
+const router = useRouter();
+const api = useApi();
+const catalogDemo = useCatalogDemo();
+
+function demoProductList(): Product[] {
+  let list = [...DEMO_PRODUCTS];
+  const term = query.value.trim();
+  if (term) {
+    list = list.filter((p) => p.name.includes(term));
+  }
+  if (route.query.discounted === '1') {
+    list = list.filter((p) => (p.discountPrice ?? 0) > 0);
+  } else if (route.query.featured === '1') {
+    list = list.filter((p) => p.isFeatured || p.isHomeFeatured);
+  }
+  if (onlyInStock.value) {
+    list = list.filter((p) => p.inStock);
+  }
+  list.sort((a, b) => {
+    const aPrice = a.discountPrice ?? a.price;
+    const bPrice = b.discountPrice ?? b.price;
+    return sort.value === 'price_desc' ? bPrice - aPrice : aPrice - bPrice;
+  });
+  return list;
+}
+
+const PAGE_SIZE = 24;
+
+type SortMode = 'price_asc' | 'price_desc';
+
+const query = ref('');
+const sort = ref<SortMode>('price_asc');
+const onlyInStock = ref(false);
+const products = ref<Product[]>([]);
+const pagination = ref<Pagination | null>(null);
+const loading = ref(false);
+const loadingMore = ref(false);
+const pageTitle = ref('جستجو');
+let productsRequestId = 0;
+
+const hasMore = computed(() => {
+  const p = pagination.value;
+  return !!p && p.page < p.totalPages;
+});
+
+const sortOptions: { value: SortMode; label: string }[] = [
+  { value: 'price_asc', label: 'ارزان‌ترین' },
+  { value: 'price_desc', label: 'گران‌ترین' },
+];
+
+/** Browse catalog vs typed search. */
+const isBrowseMode = computed(() => !normalizeSearchText(query.value));
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function syncFromRoute() {
+  query.value = normalizeSearchText((route.query.q as string) || '');
+  onlyInStock.value = route.query.inStock === '1' || route.query.inStock === 'true';
+  const routeSort = route.query.sort as string;
+  sort.value = routeSort === 'price_desc' ? 'price_desc' : 'price_asc';
+}
+
+function buildQuery(overrides: Record<string, string | undefined> = {}) {
+  const next: Record<string, string> = {};
+  const q =
+    overrides.q !== undefined
+      ? overrides.q
+        ? normalizeSearchText(overrides.q)
+        : undefined
+      : normalizeSearchText(query.value) || undefined;
+  const nextSort = (overrides.sort as SortMode | undefined) ?? sort.value;
+  const nextInStock =
+    overrides.inStock !== undefined ? overrides.inStock === '1' : onlyInStock.value;
+
+  if (route.query.featured === '1' && overrides.featured !== '0') {
+    next.featured = '1';
+  }
+  if (route.query.discounted === '1' && overrides.discounted !== '0') {
+    next.discounted = '1';
+  }
+  if (q) next.q = q;
+  if (nextSort) next.sort = nextSort;
+  if (nextInStock) next.inStock = '1';
+  return next;
+}
+
+async function fetchProducts(page: number, append: boolean) {
+  const params = new URLSearchParams({
+    limit: String(PAGE_SIZE),
+    page: String(page),
+  });
+
+  params.set('sort', sort.value);
+  if (onlyInStock.value) params.set('inStock', 'true');
+
+  if (route.query.discounted === '1') {
+    pageTitle.value = 'محصولات تخفیف‌دار';
+    params.set('discounted', 'true');
+  } else if (route.query.featured === '1') {
+    pageTitle.value = 'محصولات ویژه';
+    params.set('featured', 'true');
+  } else {
+    pageTitle.value = query.value.trim() ? 'جستجو' : 'محصولات';
+  }
+
+  const term = normalizeSearchText(query.value);
+  if (term) params.set('search', term);
+
+  const requestId = append ? productsRequestId : ++productsRequestId;
+
+  if (catalogDemo.forceDemo.value) {
+    if (requestId !== productsRequestId) return;
+    const all = demoProductList();
+    products.value = append ? products.value : all;
+    pagination.value = { page: 1, totalPages: 1, total: all.length, limit: PAGE_SIZE };
+    return;
+  }
+
+  try {
+    const { data } = await api.get<{ products: Product[]; pagination: Pagination }>(
+      `/products?${params}`
+    );
+    if (requestId !== productsRequestId) return;
+    products.value = append ? [...products.value, ...(data.products ?? [])] : (data.products ?? []);
+    pagination.value = data.pagination ?? null;
+  } catch {
+    if (requestId !== productsRequestId) return;
+    products.value = append ? products.value : [];
+    pagination.value = null;
+  }
+}
+
+async function loadSearch() {
+  loading.value = true;
+  try {
+    await fetchProducts(1, false);
+  } catch {
+    products.value = [];
+    pagination.value = null;
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function loadMore() {
+  if (loading.value || loadingMore.value || !hasMore.value) return;
+  loadingMore.value = true;
+  const requestId = productsRequestId;
+  try {
+    await fetchProducts((pagination.value?.page ?? 1) + 1, true);
+  } catch {
+    /* keep existing list */
+  } finally {
+    if (requestId === productsRequestId) loadingMore.value = false;
+  }
+}
+
+const { sentinel: loadMoreSentinel } = useInfiniteScroll(loadMore);
+
+function commitQuery(raw: string, immediate = false, fullyNormalize = false) {
+  const cleaned = fullyNormalize ? normalizeSearchText(raw) : stripInvisibleChars(raw);
+  query.value = cleaned;
+  const forUrl = normalizeSearchText(cleaned);
+  if (debounceTimer) clearTimeout(debounceTimer);
+  const run = () => {
+    void router.replace({
+      path: '/search',
+      query: buildQuery({ q: forUrl || undefined }),
+    });
+  };
+  if (immediate) run();
+  else debounceTimer = setTimeout(run, 300);
+}
+
+function onQueryInput(event: Event) {
+  // Keep typing free; only strip invisible marks so the cursor stays put.
+  commitQuery((event.target as HTMLInputElement).value, false, false);
+}
+
+function onQueryPaste(event: ClipboardEvent) {
+  const text = event.clipboardData?.getData('text') ?? '';
+  event.preventDefault();
+  // Paste often skips a reliable input cycle on mobile; clean + search immediately.
+  commitQuery(text, true, true);
+}
+
+function onQuerySubmit() {
+  commitQuery(query.value, true, true);
+  void loadSearch();
+}
+
+function setSort(next: SortMode) {
+  sort.value = next;
+  const overrides: Record<string, string | undefined> = { sort: next };
+  if (next !== 'discount') overrides.discounted = '0';
+  void router.replace({ path: '/search', query: buildQuery(overrides) });
+}
+
+function toggleInStock() {
+  onlyInStock.value = !onlyInStock.value;
+  void router.replace({
+    path: '/search',
+    query: buildQuery({ inStock: onlyInStock.value ? '1' : '0' }),
+  });
+}
+
+watch(
+  () => [
+    route.query.q,
+    route.query.discounted,
+    route.query.featured,
+    route.query.sort,
+    route.query.inStock,
+  ],
+  () => {
+    syncFromRoute();
+    void loadSearch();
+  },
+  { immediate: true }
+);
+
+usePageSeo(() => ({
+  title: pageTitle.value,
+  noindex: true,
+}));
+</script>
+
+<template>
+  <div class="px-4 py-4">
+    <h1 class="section-title">{{ pageTitle }}</h1>
+
+    <form class="mb-4" @submit.prevent="onQuerySubmit">
+      <div class="relative">
+        <input
+          :value="query"
+          type="search"
+          enterkeyhint="search"
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
+          class="input-field pe-12"
+          placeholder="نام، کد یا بارکد محصول..."
+          @input="onQueryInput"
+          @paste="onQueryPaste"
+          @search="onQuerySubmit"
+        />
+        <button type="submit" class="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400">
+          <AppIcon name="lucide:search" size="md" />
+        </button>
+      </div>
+    </form>
+
+    <div class="flex gap-2 overflow-x-auto scrollbar-hide pb-3 mb-1">
+      <button
+        type="button"
+        :class="[
+          'shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors',
+          onlyInStock
+            ? 'bg-primary-600 text-white border-primary-600'
+            : 'bg-white text-gray-600 border-gray-200',
+        ]"
+        :aria-pressed="onlyInStock"
+        @click="toggleInStock"
+      >
+        <AppIcon name="lucide:package-check" size="sm" />
+        فقط موجود
+      </button>
+      <button
+        v-for="option in sortOptions"
+        :key="option.value"
+        type="button"
+        :class="[
+          'shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors',
+          sort === option.value
+            ? 'bg-primary-600 text-white border-primary-600'
+            : 'bg-white text-gray-600 border-gray-200',
+        ]"
+        @click="setSort(option.value)"
+      >
+        {{ option.label }}
+      </button>
+    </div>
+
+    <LoadingSpinner :show="loading" />
+
+    <ProductCardList v-if="!loading" :products="products" />
+
+    <div
+      v-if="!loading && products.length && (hasMore || loadingMore)"
+      class="py-6 flex flex-col items-center gap-2"
+    >
+      <div ref="loadMoreSentinel" class="h-1 w-full" aria-hidden="true" />
+      <LoadingSpinner :show="loadingMore" />
+      <p v-if="loadingMore" class="text-xs text-gray-400">در حال بارگذاری محصولات بیشتر…</p>
+    </div>
+
+    <EmptyCatalogScene
+      v-if="!loading && !products.length"
+      :variant="isBrowseMode ? 'products' : 'search'"
+      :title="isBrowseMode ? 'لاستیکی یافت نشد' : undefined"
+      :description="
+        isBrowseMode
+          ? 'با فیلتر یا مرتب‌سازی دیگری امتحان کنید، یا برندها را ببینید.'
+          : undefined
+      "
+      class="mt-4"
+    >
+      <NuxtLink to="/shop" class="btn-primary btn-action text-sm px-6">رفتن به فروشگاه</NuxtLink>
+    </EmptyCatalogScene>
+  </div>
+</template>
