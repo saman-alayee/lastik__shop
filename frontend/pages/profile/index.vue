@@ -86,11 +86,11 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
 </script>
 
 <template>
-  <div class="pdash">
-    <section class="pdash-card">
-      <div class="pdash-card__head">
-        <h2>سفارش‌های من</h2>
-        <NuxtLink to="/profile/orders" class="pdash-card__link">
+  <div class="ui-stack">
+    <section class="ui-panel">
+      <div class="ui-head">
+        <h2 class="ui-title">سفارش‌های من</h2>
+        <NuxtLink to="/profile/orders" class="ui-link">
           مشاهده همه
           <AppIcon name="lucide:chevron-left" size="sm" />
         </NuxtLink>
@@ -117,13 +117,12 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
       </div>
     </section>
 
-    <section class="pdash-card">
-      <div class="pdash-card__head">
-        <h2>
+    <section class="ui-panel">
+      <div class="ui-head">
+        <h2 class="ui-title ui-title--accent">
           {{ isTireStore ? 'از علاقه‌مندی‌های شما' : 'از لیست‌های شما' }}
-          <span class="pdash-card__accent" aria-hidden="true" />
         </h2>
-        <NuxtLink to="/profile/favorites" class="pdash-card__link">
+        <NuxtLink to="/profile/favorites" class="ui-link">
           مشاهده همه
           <AppIcon name="lucide:chevron-left" size="sm" />
         </NuxtLink>
@@ -154,7 +153,7 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
           </p>
           <button
             type="button"
-            class="pdash-fav__cart"
+            class="ui-pill-btn"
             :disabled="addingId === product.id || !((product.stock ?? 0) > 0)"
             @click="addFavoriteToCart(product)"
           >
@@ -181,9 +180,9 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
       </EmptyCatalogScene>
     </section>
 
-    <section class="pdash-card pdash-quick">
-      <div class="pdash-card__head">
-        <h2>دسترسی سریع</h2>
+    <section class="ui-panel pdash-quick">
+      <div class="ui-head">
+        <h2 class="ui-title">دسترسی سریع</h2>
       </div>
       <div class="pdash-quick__grid">
         <NuxtLink to="/profile/addresses" class="pdash-quick__item">
@@ -208,59 +207,6 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
 </template>
 
 <style scoped>
-.pdash {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-.pdash-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  background: #fff;
-  padding: 1rem 1rem 1.1rem;
-}
-
-.pdash-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.pdash-card__head h2 {
-  position: relative;
-  margin: 0;
-  font-size: 0.98rem;
-  font-weight: 800;
-  color: #111827;
-}
-
-.pdash-card__accent {
-  position: absolute;
-  inset-inline-start: 0;
-  bottom: -0.45rem;
-  width: 2.4rem;
-  height: 2px;
-  background: #e11d48;
-}
-
-.pdash-card__link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  color: #2563eb;
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.pdash-card__link:hover {
-  color: #1d4ed8;
-}
-
 .pdash-orders {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -273,14 +219,14 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
   align-items: center;
   gap: 0.55rem;
   padding: 0.85rem 0.4rem;
-  border-radius: 0.65rem;
+  border-radius: var(--radius-sm);
   text-decoration: none;
   color: inherit;
   transition: background-color 0.15s ease;
 }
 
 .pdash-order:hover {
-  background: #f9fafb;
+  background: rgb(var(--color-surface-muted));
 }
 
 .pdash-order__icon {
@@ -289,18 +235,18 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
   width: 3.4rem;
   height: 3.4rem;
   border-radius: 999px;
-  background: #eff6ff;
-  color: #2563eb;
+  background: rgb(var(--color-primary-100));
+  color: rgb(var(--color-primary-700));
 }
 
 .pdash-order[data-tone='delivered'] .pdash-order__icon {
-  background: #ecfdf5;
-  color: #059669;
+  background: rgb(var(--color-success) / 0.1);
+  color: rgb(var(--color-success));
 }
 
 .pdash-order[data-tone='cancelled'] .pdash-order__icon {
-  background: #fffbeb;
-  color: #d97706;
+  background: rgb(var(--color-warning) / 0.12);
+  color: rgb(var(--color-warning));
 }
 
 .pdash-order__meta {
@@ -314,12 +260,12 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
 .pdash-order__meta strong {
   font-size: 0.82rem;
   font-weight: 800;
-  color: #111827;
+  color: rgb(var(--color-text));
 }
 
 .pdash-order__meta span {
   font-size: 0.72rem;
-  color: #6b7280;
+  color: rgb(var(--color-text-muted));
 }
 
 .pdash-favs {
@@ -338,8 +284,8 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
   gap: 0.45rem;
   min-width: 0;
   padding: 0.65rem;
-  border: 1px solid #f3f4f6;
-  border-radius: 0.65rem;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: var(--radius-sm);
 }
 
 .pdash-fav__media {
@@ -347,8 +293,8 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
   place-items: center;
   aspect-ratio: 1;
   overflow: hidden;
-  border-radius: 0.5rem;
-  background: #f9fafb;
+  border-radius: var(--radius-sm);
+  background: rgb(var(--color-surface-muted));
 }
 
 .pdash-fav__media img {
@@ -361,7 +307,7 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
   display: -webkit-box;
   overflow: hidden;
   min-height: 2.6em;
-  color: #111827;
+  color: rgb(var(--color-text));
   font-size: 0.78rem;
   font-weight: 700;
   line-height: 1.45;
@@ -372,41 +318,15 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
 
 .pdash-fav__stock {
   margin: 0;
-  color: #e11d48;
+  color: rgb(var(--color-accent-500));
   font-size: 0.68rem;
   font-weight: 700;
 }
 
 .pdash-fav__price {
   margin: 0;
-  color: #111827;
+  color: rgb(var(--color-text));
   font-size: 0.9rem;
-}
-
-.pdash-fav__cart {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  margin-top: auto;
-  min-height: 2.25rem;
-  border: 1px solid #fb7185;
-  border-radius: 0.5rem;
-  background: #fff;
-  color: #e11d48;
-  font-size: 0.75rem;
-  font-weight: 800;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.pdash-fav__cart:hover:not(:disabled) {
-  background: #fff1f2;
-}
-
-.pdash-fav__cart:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 .pdash-quick__grid {
@@ -427,19 +347,19 @@ useHead({ title: `حساب کاربری - ${SITE_NAME}` });
   align-items: center;
   gap: 0.45rem;
   padding: 0.9rem 0.5rem;
-  border: 1px solid #f3f4f6;
-  border-radius: 0.65rem;
-  color: #374151;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: var(--radius-sm);
+  color: rgb(var(--color-text));
   text-decoration: none;
   font-size: 0.78rem;
   font-weight: 700;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
 .pdash-quick__item:hover {
-  border-color: #fecdd3;
-  background: #fff1f2;
-  color: #be123c;
+  border-color: rgb(var(--color-accent-500) / 0.35);
+  background: rgb(var(--color-accent-500) / 0.05);
+  color: rgb(var(--color-accent-600));
 }
 
 @media (max-width: 640px) {

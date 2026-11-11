@@ -96,7 +96,7 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
       back-to="/profile"
     />
 
-    <div class="orders-panel">
+    <div class="ui-panel">
       <label class="orders-filter-field">
         <span>وضعیت سفارش</span>
         <AppSelect
@@ -158,13 +158,6 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
 </template>
 
 <style scoped>
-.orders-panel {
-  padding: 1rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  background: #fff;
-}
-
 .orders-filter-field {
   display: block;
   max-width: 16rem;
@@ -176,7 +169,7 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
   margin-bottom: 0.35rem;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #64748b;
+  color: rgb(var(--color-text-muted));
 }
 
 .orders-list {
@@ -188,16 +181,16 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
 .order-card {
   display: block;
   padding: 0.95rem 1rem;
-  border-radius: 0.65rem;
-  border: 1px solid #e5e7eb;
-  background: #fff;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgb(var(--color-border));
+  background: rgb(var(--color-surface));
   text-decoration: none;
   transition: border-color 160ms ease, background-color 160ms ease;
 }
 
 .order-card:hover {
-  border-color: #d1d5db;
-  background: #fafafa;
+  border-color: rgb(var(--color-border-strong));
+  background: rgb(var(--color-surface-muted));
 }
 
 .order-card__head {
@@ -218,25 +211,25 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
 .order-card__icon {
   width: 2.25rem;
   height: 2.25rem;
-  border-radius: 0.8rem;
+  border-radius: var(--radius-sm);
   display: grid;
   place-items: center;
-  background: #f8fafc;
-  color: #64748b;
-  border: 1px solid #eef2f7;
+  background: rgb(var(--color-surface-muted));
+  color: rgb(var(--color-text-muted));
+  border: 1px solid rgb(var(--color-border));
   flex-shrink: 0;
 }
 
 .group:hover .order-card__icon {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
+  background: rgb(var(--color-accent-500) / 0.08);
+  color: rgb(var(--color-accent-500));
+  border-color: rgb(var(--color-accent-500) / 0.3);
 }
 
 .order-card__number {
   font-size: 0.88rem;
   font-weight: 800;
-  color: #0f172a;
+  color: rgb(var(--color-text));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -248,7 +241,7 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
   align-items: center;
   gap: 0.45rem 0.85rem;
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: rgb(var(--color-text-muted));
   margin-bottom: 0.75rem;
 }
 
@@ -264,9 +257,9 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
   font-weight: 700;
-  color: #334155;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  color: rgb(var(--color-primary-700));
+  background: rgb(var(--color-primary-100));
+  border: 1px solid rgb(var(--color-border));
 }
 
 .order-card__foot {
@@ -283,11 +276,11 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
 }
 
 .order-card__hint--new {
-  color: #b91c1c;
+  color: rgb(var(--color-accent-600));
 }
 
 .order-card__hint--prep {
-  color: #b45309;
+  color: rgb(var(--color-warning));
 }
 
 .order-card__hint-spacer {
@@ -298,6 +291,6 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
   margin-inline-start: auto;
   font-size: 0.95rem;
   font-weight: 900;
-  color: #0f172a;
+  color: rgb(var(--color-text));
 }
 </style>

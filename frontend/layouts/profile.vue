@@ -14,12 +14,12 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="profile-shell">
+  <div class="profile-shell ui-page">
     <AppHeader />
 
     <main class="profile-shell__main safe-bottom">
       <div
-        class="profile-shell__frame"
+        class="profile-shell__frame ui-frame"
         :class="{ 'is-home': route.path === '/profile' }"
       >
         <ProfileSidebar v-if="authStore.isLoggedIn" class="profile-shell__sidebar" />
@@ -41,8 +41,6 @@ onMounted(() => {
   display: flex;
   min-height: 100vh;
   flex-direction: column;
-  background: #f3f4f6;
-  color: #111827;
 }
 
 .profile-shell__main {
@@ -50,10 +48,7 @@ onMounted(() => {
 }
 
 .profile-shell__frame {
-  width: 100%;
-  max-width: 72rem;
-  margin-inline: auto;
-  padding: 1rem 1rem 2rem;
+  padding-block: 1rem 2rem;
   display: grid;
   gap: 0.85rem;
 }
@@ -73,7 +68,7 @@ onMounted(() => {
     grid-template-columns: 17.5rem minmax(0, 1fr);
     align-items: start;
     gap: 1rem;
-    padding: 1.5rem 1.25rem 2.5rem;
+    padding-block: 1.5rem 2.5rem;
   }
 
   .profile-shell__sidebar {

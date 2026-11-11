@@ -372,7 +372,10 @@ export function themeToCssVars(theme: ThemeColors): Record<string, string> {
     '--color-text': hexToRgbChannels(theme.text),
     '--color-text-muted': hexToRgbChannels(theme.textMuted),
     '--color-border': hexToRgbChannels(theme.border),
+    '--color-border-strong': primary['300'],
     '--color-on-primary': hexToRgbChannels(theme.onPrimary),
+    '--color-link': primary['700'],
+    '--color-danger': hexToRgbChannels(theme.accent),
   };
 }
 

@@ -314,7 +314,7 @@ const rimSelectOptions = computed(() =>
   <!-- Default compact card (shop / other pages) -->
   <section
     v-else
-    class="tire-search-widget mx-auto max-w-3xl rounded-2xl border border-gray-200 bg-white p-5 shadow-sm md:p-6"
+    class="tire-search-widget ui-panel mx-auto max-w-3xl !rounded-[var(--radius-lg)] p-5 md:p-6"
   >
     <div class="mb-4 text-center">
       <h2 class="text-base font-bold text-gray-900 md:text-lg">جستجوی لاستیک</h2>

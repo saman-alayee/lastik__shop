@@ -31,9 +31,6 @@ function step(delta: number) {
 <template>
   <div class="pd-gallery md:sticky md:top-24">
     <div class="pd-gallery__stage">
-      <div class="pd-gallery__glow" aria-hidden="true" />
-      <div class="pd-gallery__ring" aria-hidden="true" />
-
       <Transition name="pd-fade" mode="out-in">
         <img
           :key="imageKey"
@@ -109,35 +106,16 @@ function step(delta: number) {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  background:
-    radial-gradient(ellipse 80% 70% at 50% 40%, rgba(255, 255, 255, 0.14), transparent 62%),
-    linear-gradient(165deg, #1e293b 0%, #0f172a 48%, #020617 100%);
+  background: rgb(var(--color-surface));
   min-height: min(72vw, 420px);
 }
 
 @media (min-width: 768px) {
   .pd-gallery__stage {
     min-height: 480px;
-    border-radius: 1.25rem;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: var(--radius-lg);
   }
-}
-
-.pd-gallery__glow {
-  pointer-events: none;
-  position: absolute;
-  inset: auto -10% -30% -10%;
-  height: 55%;
-  background: radial-gradient(ellipse at center, rgba(220, 38, 38, 0.22), transparent 68%);
-  z-index: 0;
-}
-
-.pd-gallery__ring {
-  pointer-events: none;
-  position: absolute;
-  inset: 12% 8%;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 50%;
-  z-index: 0;
 }
 
 .pd-gallery__img {
@@ -147,14 +125,13 @@ function step(delta: number) {
   width: 100%;
   height: min(72vw, 420px);
   object-fit: contain;
-  padding: 1.5rem 1rem 1.75rem;
-  filter: drop-shadow(0 24px 40px rgba(0, 0, 0, 0.45));
+  padding: 1rem;
 }
 
 @media (min-width: 768px) {
   .pd-gallery__img {
     height: 480px;
-    padding: 2.25rem 1.75rem;
+    padding: 1.25rem;
   }
 }
 
@@ -169,15 +146,15 @@ function step(delta: number) {
   align-items: center;
   justify-content: center;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(15, 23, 42, 0.55);
-  color: #f8fafc;
-  backdrop-filter: blur(8px);
+  border: 1px solid rgb(var(--color-border));
+  background: rgb(var(--color-surface));
+  color: rgb(var(--color-text));
+  box-shadow: var(--shadow-card);
   transition: background-color 0.2s ease, transform 0.2s ease;
 }
 
 .pd-gallery__nav:hover {
-  background: rgba(15, 23, 42, 0.8);
+  background: rgb(var(--color-surface-muted));
   transform: translateY(-50%) scale(1.05);
 }
 
@@ -195,13 +172,13 @@ function step(delta: number) {
   height: 0.3rem;
   width: 0.3rem;
   border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgb(var(--color-border-strong));
   transition: width 0.25s ease, background-color 0.25s ease;
 }
 
 .pd-gallery__dot.is-active {
   width: 1.1rem;
-  background: rgb(248 113 113);
+  background: rgb(var(--color-accent-500));
 }
 
 .pd-gallery__thumbs {
@@ -222,8 +199,8 @@ function step(delta: number) {
   flex-shrink: 0;
   overflow: hidden;
   border-radius: 0.85rem;
-  border: 1px solid rgb(226 232 240);
-  background: #fff;
+  border: 1px solid rgb(var(--color-border));
+  background: rgb(var(--color-surface));
   opacity: 0.72;
   transition:
     opacity 0.2s ease,
@@ -238,15 +215,15 @@ function step(delta: number) {
 
 .pd-gallery__thumb.is-active {
   opacity: 1;
-  border-color: rgb(220 38 38);
-  box-shadow: 0 0 0 1px rgb(220 38 38);
+  border-color: rgb(var(--color-accent-500));
+  box-shadow: 0 0 0 1px rgb(var(--color-accent-500));
 }
 
 .product-fav-btn {
-  color: #0f172a;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.25);
+  color: rgb(var(--color-text));
+  background: rgb(var(--color-surface));
+  border: 1px solid rgb(var(--color-border));
+  box-shadow: var(--shadow-card);
   transition:
     transform 0.18s ease,
     color 0.18s ease,
@@ -259,9 +236,9 @@ function step(delta: number) {
 }
 
 .product-fav-btn.is-on {
-  color: #dc2626;
-  background: #fff5f5;
-  border-color: rgba(220, 38, 38, 0.35);
+  color: rgb(var(--color-accent-500));
+  background: rgb(var(--color-accent-500) / 0.06);
+  border-color: rgb(var(--color-accent-500) / 0.35);
   animation: product-fav-pop 0.45s cubic-bezier(0.22, 1.4, 0.36, 1);
 }
 
@@ -272,9 +249,9 @@ function step(delta: number) {
 
 .product-fav-btn.is-on :deep(svg.product-fav-btn__icon),
 .product-fav-btn.is-on :deep(svg.product-fav-btn__icon path) {
-  fill: #dc2626 !important;
-  stroke: #dc2626 !important;
-  color: #dc2626 !important;
+  fill: rgb(var(--color-accent-500)) !important;
+  stroke: rgb(var(--color-accent-500)) !important;
+  color: rgb(var(--color-accent-500)) !important;
 }
 
 .pd-fade-enter-active,

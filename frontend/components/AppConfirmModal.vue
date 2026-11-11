@@ -96,11 +96,11 @@ onBeforeUnmount(() => {
 
 .confirm-card {
   width: min(100%, 26rem);
-  border-radius: 1.25rem;
-  background: #fff;
+  border-radius: var(--radius-xl);
+  background: rgb(var(--color-surface));
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
   padding: 1.35rem 1.35rem 1.2rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid rgb(var(--color-border));
 }
 
 .confirm-icon {
@@ -114,25 +114,25 @@ onBeforeUnmount(() => {
 }
 
 .confirm-card.is-danger .confirm-icon {
-  background: #fef2f2;
-  color: #dc2626;
+  background: rgb(var(--color-danger) / 0.08);
+  color: rgb(var(--color-danger));
 }
 
 .confirm-card.is-warning .confirm-icon {
-  background: #fff7ed;
-  color: #ea580c;
+  background: rgb(var(--color-warning) / 0.12);
+  color: rgb(var(--color-warning));
 }
 
 .confirm-card.is-default .confirm-icon {
-  background: #eff6ff;
-  color: #2563eb;
+  background: rgb(var(--color-primary-100));
+  color: rgb(var(--color-primary-700));
 }
 
 .confirm-title {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 800;
-  color: #0f172a;
+  color: rgb(var(--color-text));
 }
 
 .confirm-message {

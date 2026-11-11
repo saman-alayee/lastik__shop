@@ -269,7 +269,7 @@ watch(
 .admin-side-link.is-active {
   background: linear-gradient(90deg, rgba(220, 38, 38, 0.22), rgba(220, 38, 38, 0.08));
   color: #fff;
-  box-shadow: inset 3px 0 0 #dc2626;
+  box-shadow: inset 3px 0 0 rgb(var(--color-accent-500));
   font-weight: 600;
 }
 

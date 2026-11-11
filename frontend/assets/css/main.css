@@ -5,7 +5,7 @@
 @tailwind utilities;
 
 :root {
-  /* Tire shop palette — graphite + signal red (inspired by lastikforoosh, modernized) */
+  /* Design system — graphite + signal red (one palette for store + profile + admin) */
   --color-primary-50: 248 250 252;
   --color-primary-100: 241 245 249;
   --color-primary-200: 226 232 240;
@@ -28,7 +28,20 @@
   --color-text: 15 23 42;
   --color-text-muted: 100 116 139;
   --color-border: 226 232 240;
+  --color-border-strong: 203 213 225;
   --color-on-primary: 255 255 255;
+  --color-link: 30 41 59;
+  --color-success: 5 150 105;
+  --color-warning: 217 119 6;
+  --color-danger: 220 38 38;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.04);
+  --shadow-float: 0 -4px 24px rgba(15, 23, 42, 0.08);
+  --space-panel: 1rem;
+  --frame-max: 72rem;
 }
 
 @layer base {
@@ -113,11 +126,187 @@
   }
 
   .card {
-    @apply bg-white rounded-2xl shadow-card overflow-hidden;
+    @apply overflow-hidden bg-surface;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
   }
 
   .section-title {
-    @apply text-lg font-bold text-gray-800 mb-4;
+    @apply mb-4 text-lg font-bold;
+    color: rgb(var(--color-text));
+  }
+
+  /* —— Shared UI kit (storefront + profile) —— */
+  .ui-page {
+    background-color: rgb(var(--color-page));
+    color: rgb(var(--color-text));
+  }
+
+  .ui-frame {
+    width: 100%;
+    max-width: var(--frame-max);
+    margin-inline: auto;
+    padding-inline: 1rem;
+  }
+
+  .ui-panel {
+    background: rgb(var(--color-surface));
+    border: 1px solid rgb(var(--color-border));
+    border-radius: var(--radius-md);
+    padding: var(--space-panel);
+  }
+
+  .ui-panel--flush {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .ui-card {
+    background: rgb(var(--color-surface));
+    border: 1px solid rgb(var(--color-border));
+    border-radius: var(--radius-md);
+  }
+
+  .ui-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .ui-title {
+    margin: 0;
+    font-size: 0.98rem;
+    font-weight: 800;
+    color: rgb(var(--color-text));
+    line-height: 1.4;
+  }
+
+  .ui-title--accent {
+    position: relative;
+    padding-bottom: 0.45rem;
+  }
+
+  .ui-title--accent::after {
+    content: '';
+    position: absolute;
+    inset-inline-start: 0;
+    bottom: 0;
+    width: 2.4rem;
+    height: 2px;
+    background: rgb(var(--color-accent-500));
+    border-radius: 999px;
+  }
+
+  .ui-subtitle {
+    margin: 0.15rem 0 0;
+    font-size: 0.78rem;
+    color: rgb(var(--color-text-muted));
+    line-height: 1.5;
+  }
+
+  .ui-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    color: rgb(var(--color-link));
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color 0.15s ease;
+  }
+
+  .ui-link:hover {
+    color: rgb(var(--color-accent-600));
+  }
+
+  .ui-rail {
+    position: absolute;
+    inset-block: 0.55rem;
+    inset-inline-start: 0;
+    width: 3px;
+    border-radius: 999px;
+    background: transparent;
+  }
+
+  .ui-rail.is-active,
+  .is-active > .ui-rail {
+    background: rgb(var(--color-accent-500));
+  }
+
+  .ui-icon-btn {
+    display: grid;
+    place-items: center;
+    width: 2.35rem;
+    height: 2.35rem;
+    flex-shrink: 0;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: var(--radius-sm);
+    background: rgb(var(--color-surface));
+    color: rgb(var(--color-text-muted));
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .ui-icon-btn:hover {
+    background: rgb(var(--color-surface-muted));
+    color: rgb(var(--color-text));
+  }
+
+  .ui-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 2.35rem;
+    padding: 0.45rem 0.85rem;
+    border: 1px solid rgb(var(--color-accent-500));
+    border-radius: var(--radius-sm);
+    background: rgb(var(--color-surface));
+    color: rgb(var(--color-accent-500));
+    font-size: 0.8rem;
+    font-weight: 700;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .ui-pill-btn:hover:not(:disabled) {
+    background: rgb(var(--color-accent-500) / 0.06);
+  }
+
+  .ui-pill-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .ui-badge {
+    display: inline-flex;
+    min-width: 1.2rem;
+    height: 1.2rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    background: rgb(var(--color-accent-500));
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 800;
+  }
+
+  .ui-divider {
+    border: 0;
+    border-top: 1px solid rgb(var(--color-border));
+  }
+
+  .ui-muted {
+    color: rgb(var(--color-text-muted));
+  }
+
+  .ui-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
   }
 
   .product-card-slot {
@@ -625,14 +814,21 @@ html.theme-live .border-neutral-300 {
   border-color: rgb(var(--color-border)) !important;
 }
 
-/* —— Admin panel UI kit —— */
+/* —— Admin panel UI kit (same tokens as storefront) —— */
 .admin-shell .admin-card,
 .admin-card {
-  @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: var(--radius-lg);
+  background: rgb(var(--color-surface));
+  box-shadow: var(--shadow-card);
 }
 
 .admin-stat-card {
-  @apply rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: var(--radius-lg);
+  background: rgb(var(--color-surface));
+  box-shadow: var(--shadow-card);
+  padding: 1rem;
 }
 
 .admin-stat-card--link {
@@ -652,7 +848,23 @@ html.theme-live .border-neutral-300 {
 }
 
 .admin-toolbar {
-  @apply mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm md:flex-row md:flex-wrap md:items-end;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border: 1px solid rgb(var(--color-border));
+  border-radius: var(--radius-lg);
+  background: rgb(var(--color-surface));
+  box-shadow: var(--shadow-card);
+}
+
+@media (min-width: 768px) {
+  .admin-toolbar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
 }
 
 .admin-filter-field {

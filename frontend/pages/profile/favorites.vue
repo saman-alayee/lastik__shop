@@ -22,7 +22,7 @@ useHead({ title: `علاقه‌مندی‌ها - ${SITE_NAME}` });
   <div class="fav-page">
     <ProfilePageHeader title="علاقه‌مندی‌ها" subtitle="محصولات منتخب شما" back-to="/profile" />
 
-    <div class="fav-panel">
+    <div class="ui-panel">
       <LoadingSpinner :show="loading" />
 
       <ProductCardList v-if="!loading && products.length" :products="products" />
@@ -33,18 +33,3 @@ useHead({ title: `علاقه‌مندی‌ها - ${SITE_NAME}` });
     </div>
   </div>
 </template>
-
-<style scoped>
-.fav-page {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.fav-panel {
-  padding: 1rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  background: #fff;
-}
-</style>
