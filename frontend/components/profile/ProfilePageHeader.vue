@@ -7,20 +7,67 @@ defineProps<{
 </script>
 
 <template>
-  <div class="flex items-center gap-3 mb-5">
+  <header class="pph">
     <NuxtLink
       v-if="backTo"
       :to="backTo"
-      class="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-50 shrink-0"
+      class="pph__back"
+      aria-label="بازگشت"
     >
       <AppIcon name="lucide:arrow-right" size="md" />
     </NuxtLink>
-    <div class="min-w-0 flex-1">
-      <h1 class="text-lg font-bold text-gray-800">{{ title }}</h1>
-      <p v-if="subtitle" class="text-sm text-gray-500 mt-0.5">{{ subtitle }}</p>
+
+    <div class="pph__copy min-w-0 flex-1">
+      <h1>{{ title }}</h1>
+      <p v-if="subtitle">{{ subtitle }}</p>
     </div>
-    <div class="ms-auto shrink-0">
+
+    <div v-if="$slots.action" class="pph__action shrink-0">
       <slot name="action" />
     </div>
-  </div>
+  </header>
 </template>
+
+<style scoped>
+.pph {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.pph__back {
+  display: grid;
+  place-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex-shrink: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.55rem;
+  color: #4b5563;
+  transition: background-color 0.15s ease;
+}
+
+.pph__back:hover {
+  background: #f9fafb;
+}
+
+.pph__copy h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.4;
+}
+
+.pph__copy p {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+</style>

@@ -35,15 +35,8 @@ Thumbs.db
 .vscode/
 *.log
 
-# Environment (secrets — copy from *.env.example)
-.env
-.env.local
-.env.*.local
-backend/.env
-backend/.env.production
-frontend/.env.development
-frontend/.env.production
-deploy/**/.env
+# Environment — tracked for test/demo deploy (user request)
+# Keep SSL keys ignored below.
 
 # Deploy temp artifacts
 deploy/api-temp/dist/

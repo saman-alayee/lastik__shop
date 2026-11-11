@@ -5,6 +5,7 @@ definePageMeta({ layout: 'admin', middleware: 'admin' });
 
 const api = useApi();
 const toast = useToast();
+const { confirm } = useConfirmDialog();
 const { formatPrice, formatShortDate } = useFormat();
 
 const coupons = ref<Coupon[]>([]);
@@ -107,7 +108,13 @@ async function saveCoupon() {
 }
 
 async function deactivateCoupon(id: string) {
-  if (!confirm('این کد تخفیف غیرفعال شود؟')) return;
+  const ok = await confirm({
+    title: 'غیرفعال‌سازی کد',
+    message: 'این کد تخفیف غیرفعال شود؟',
+    confirmText: 'غیرفعال شود',
+    variant: 'warning',
+  });
+  if (!ok) return;
   try {
     await api.delete(`/admin/coupons/${id}`);
     toast.success('کد تخفیف غیرفعال شد');

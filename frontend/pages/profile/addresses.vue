@@ -6,6 +6,7 @@ definePageMeta({ layout: 'profile', middleware: 'auth' });
 
 const api = useApi();
 const toast = useToast();
+const { confirm } = useConfirmDialog();
 const addressFields = useAddressFields();
 const { street, plaque, unit, province, city, postalCode, cityOptions, errors, reset, loadFromAddress, validate, payload } = addressFields;
 
@@ -91,7 +92,12 @@ async function save() {
 }
 
 async function remove(id: string) {
-  if (!confirm('این آدرس حذف شود؟')) return;
+  const ok = await confirm({
+    title: 'حذف آدرس',
+    message: 'این آدرس از لیست آدرس‌های شما حذف می‌شود.',
+    confirmText: 'حذف آدرس',
+  });
+  if (!ok) return;
   try {
     await api.delete(`/addresses/${id}`);
     toast.success('آدرس حذف شد');

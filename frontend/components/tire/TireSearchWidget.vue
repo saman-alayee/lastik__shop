@@ -407,7 +407,7 @@ const rimSelectOptions = computed(() =>
 <style scoped>
 .hero-finder__panel {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 1.25rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background:

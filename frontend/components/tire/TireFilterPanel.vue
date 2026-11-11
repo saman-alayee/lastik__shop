@@ -219,6 +219,87 @@ const patternModel = computed({
   },
 });
 
+const seasonModel = computed({
+  get: () => filters.value.season ?? '',
+  set: (value: string | number) => {
+    filters.value = { ...filters.value, season: value ? String(value) : undefined };
+  },
+});
+
+const usageModel = computed({
+  get: () => filters.value.usageType ?? '',
+  set: (value: string | number) => {
+    filters.value = { ...filters.value, usageType: value ? String(value) : undefined };
+  },
+});
+
+const featureOptions = [
+  { value: 'inStock', label: 'فقط موجود' },
+  { value: 'discounted', label: 'تخفیف‌دار' },
+  { value: 'tubeless', label: 'تیوبلس' },
+  { value: 'runFlat', label: 'ران‌فلت' },
+];
+
+const featureModel = computed({
+  get: () => {
+    const f = filters.value;
+    const selected: string[] = [];
+    if (f.inStock) selected.push('inStock');
+    if (f.discounted) selected.push('discounted');
+    if (f.tubeless) selected.push('tubeless');
+    if (f.runFlat) selected.push('runFlat');
+    return selected;
+  },
+  set: (values: string[]) => {
+    const set = new Set(values);
+    filters.value = {
+      ...filters.value,
+      inStock: set.has('inStock') || undefined,
+      discounted: set.has('discounted') || undefined,
+      tubeless: set.has('tubeless') || undefined,
+      runFlat: set.has('runFlat') || undefined,
+    };
+  },
+});
+
+const pricePresetOptions = computed(() =>
+  pricePresets.value.map((preset, index) => ({
+    value: String(index),
+    label: preset.label,
+  }))
+);
+
+const pricePresetModel = computed({
+  get: () => {
+    const idx = pricePresets.value.findIndex(
+      (preset) =>
+        filters.value.priceMin === preset.min && filters.value.priceMax === preset.max
+    );
+    return idx >= 0 ? String(idx) : '0';
+  },
+  set: (value: string | number) => {
+    const preset = pricePresets.value[Number(value)] ?? pricePresets.value[0];
+    if (!preset) return;
+    filters.value = {
+      ...filters.value,
+      priceMin: preset.min,
+      priceMax: preset.max,
+    };
+  },
+});
+
+const discountModel = computed({
+  get: () => (filters.value.minDiscount != null ? String(filters.value.minDiscount) : ''),
+  set: (value: string | number) => {
+    const next = value === '' || value == null ? undefined : Number(value);
+    filters.value = {
+      ...filters.value,
+      minDiscount: Number.isFinite(next as number) ? (next as number) : undefined,
+      discounted: next ? true : filters.value.discounted,
+    };
+  },
+});
+
 function clearAll() {
   emit('clear');
 }
@@ -229,41 +310,6 @@ function clearSize() {
     width: undefined,
     aspect: undefined,
     rim: undefined,
-  };
-}
-
-function toggleBool(key: 'tubeless' | 'runFlat' | 'inStock' | 'discounted') {
-  const current = filters.value[key];
-  filters.value = { ...filters.value, [key]: current ? undefined : true };
-}
-
-function setSeason(value: string) {
-  filters.value = {
-    ...filters.value,
-    season: filters.value.season === value ? undefined : value,
-  };
-}
-
-function setUsage(value: string) {
-  filters.value = {
-    ...filters.value,
-    usageType: filters.value.usageType === value ? undefined : value,
-  };
-}
-
-function applyPricePreset(preset: { min?: number; max?: number }) {
-  filters.value = {
-    ...filters.value,
-    priceMin: preset.min,
-    priceMax: preset.max,
-  };
-}
-
-function setMinDiscount(value?: number) {
-  filters.value = {
-    ...filters.value,
-    minDiscount: value,
-    discounted: value ? true : filters.value.discounted,
   };
 }
 
@@ -365,72 +411,39 @@ onMounted(async () => {
           />
         </label>
 
-        <div class="tire-filters__chips">
-          <button
-            type="button"
-            class="tire-filters__chip"
-            :class="{ 'is-on': filters.inStock }"
-            @click="toggleBool('inStock')"
-          >
-            فقط موجود
-          </button>
-          <button
-            type="button"
-            class="tire-filters__chip"
-            :class="{ 'is-on': filters.discounted }"
-            @click="toggleBool('discounted')"
-          >
-            تخفیف‌دار
-          </button>
-          <button
-            type="button"
-            class="tire-filters__chip"
-            :class="{ 'is-on': filters.tubeless }"
-            @click="toggleBool('tubeless')"
-          >
-            تیوبلس
-          </button>
-          <button
-            type="button"
-            class="tire-filters__chip"
-            :class="{ 'is-on': filters.runFlat }"
-            @click="toggleBool('runFlat')"
-          >
-            ران‌فلت
-          </button>
-        </div>
+        <label class="tire-filters__field">
+          <span class="tire-filters__label">ویژگی‌ها</span>
+          <AppMultiSelect
+            v-model="featureModel"
+            :options="featureOptions"
+            placeholder="انتخاب ویژگی"
+            :searchable="false"
+          />
+        </label>
       </section>
 
       <section class="tire-filters__section">
-        <p class="tire-filters__section-title">فصل</p>
-        <div class="tire-filters__chips">
-          <button
-            v-for="opt in seasonOptions"
-            :key="opt.value"
-            type="button"
-            class="tire-filters__chip"
-            :class="{ 'is-on': filters.season === opt.value }"
-            @click="setSeason(String(opt.value))"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-      </section>
-
-      <section class="tire-filters__section">
-        <p class="tire-filters__section-title">نوع کاربری</p>
-        <div class="tire-filters__chips">
-          <button
-            v-for="opt in usageOptions"
-            :key="opt.value"
-            type="button"
-            class="tire-filters__chip"
-            :class="{ 'is-on': filters.usageType === opt.value }"
-            @click="setUsage(String(opt.value))"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
+        <p class="tire-filters__section-title">فصل و کاربری</p>
+        <label class="tire-filters__field">
+          <span class="tire-filters__label">فصل</span>
+          <AppSelect
+            v-model="seasonModel"
+            :options="seasonOptions"
+            placeholder="همه فصل‌ها"
+            clearable
+            size="sm"
+          />
+        </label>
+        <label class="tire-filters__field">
+          <span class="tire-filters__label">نوع کاربری</span>
+          <AppSelect
+            v-model="usageModel"
+            :options="usageOptions"
+            placeholder="همه کاربری‌ها"
+            clearable
+            size="sm"
+          />
+        </label>
       </section>
 
       <section class="tire-filters__section">
@@ -519,22 +532,14 @@ onMounted(async () => {
         </button>
 
         <div v-if="showPrice" class="tire-filters__stack">
-          <div v-if="pricePresets.length" class="tire-filters__chips">
-            <button
-              v-for="preset in pricePresets"
-              :key="preset.label"
-              type="button"
-              class="tire-filters__chip"
-              :class="{
-                'is-on':
-                  filters.priceMin === preset.min &&
-                  filters.priceMax === preset.max,
-              }"
-              @click="applyPricePreset(preset)"
-            >
-              {{ preset.label }}
-            </button>
-          </div>
+          <label v-if="pricePresetOptions.length" class="tire-filters__field">
+            <span class="tire-filters__label">بازه قیمت پیشنهادی</span>
+            <AppSelect
+              v-model="pricePresetModel"
+              :options="pricePresetOptions"
+              size="sm"
+            />
+          </label>
 
           <div class="tire-filters__prices">
             <label class="tire-filters__field">
@@ -563,40 +568,20 @@ onMounted(async () => {
             </label>
           </div>
 
-          <div class="tire-filters__chips">
-            <button
-              type="button"
-              class="tire-filters__chip"
-              :class="{ 'is-on': !filters.minDiscount }"
-              @click="setMinDiscount(undefined)"
-            >
-              هر تخفیف
-            </button>
-            <button
-              type="button"
-              class="tire-filters__chip"
-              :class="{ 'is-on': filters.minDiscount === 10 }"
-              @click="setMinDiscount(10)"
-            >
-              از ۱۰٪
-            </button>
-            <button
-              type="button"
-              class="tire-filters__chip"
-              :class="{ 'is-on': filters.minDiscount === 15 }"
-              @click="setMinDiscount(15)"
-            >
-              از ۱۵٪
-            </button>
-            <button
-              type="button"
-              class="tire-filters__chip"
-              :class="{ 'is-on': filters.minDiscount === 20 }"
-              @click="setMinDiscount(20)"
-            >
-              از ۲۰٪
-            </button>
-          </div>
+          <label class="tire-filters__field">
+            <span class="tire-filters__label">حداقل تخفیف</span>
+            <AppSelect
+              v-model="discountModel"
+              :options="[
+                { value: '', label: 'هر تخفیف' },
+                { value: '10', label: 'از ۱۰٪' },
+                { value: '15', label: 'از ۱۵٪' },
+                { value: '20', label: 'از ۲۰٪' },
+              ]"
+              size="sm"
+              clearable
+            />
+          </label>
         </div>
       </section>
     </template>
@@ -694,34 +679,6 @@ onMounted(async () => {
   font-size: 0.72rem;
   font-weight: 700;
   color: #334155;
-}
-
-.tire-filters__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.tire-filters__chip {
-  min-height: 2rem;
-  padding: 0.3rem 0.75rem;
-  border-radius: 999px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  font-size: 0.74rem;
-  font-weight: 700;
-  color: #475569;
-  cursor: pointer;
-}
-
-.tire-filters__chip:hover {
-  border-color: #94a3b8;
-}
-
-.tire-filters__chip.is-on {
-  border-color: #dc2626;
-  background: #dc2626;
-  color: #fff;
 }
 
 .tire-filters__toggle {

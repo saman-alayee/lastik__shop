@@ -163,41 +163,23 @@ usePageSeo(() => ({
           </p>
         </div>
 
-        <ul class="flex flex-wrap gap-2">
-          <li>
-            <button
-              type="button"
-              class="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors"
-              :class="
-                !selectedSizeId
-                  ? 'border-primary-400 bg-primary-600 text-white'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-primary-200'
-              "
-              @click="selectSize('')"
-            >
-              همه سایزها
-            </button>
-          </li>
-          <li v-for="size in standardSizes" :key="size.id">
-            <button
-              type="button"
-              class="rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors"
-              :class="
-                selectedSizeId === size.id
-                  ? 'border-primary-400 bg-primary-600 text-white'
-                  : size.isStandard
-                    ? 'border-primary-300 bg-primary-50 text-primary-800 hover:border-primary-400'
-                    : 'border-gray-200 text-gray-700 hover:border-gray-300'
-              "
-              :title="size.isStandard ? 'سایز استاندارد' : 'سایز جایگزین'"
-              dir="ltr"
-              @click="selectSize(size.id)"
-            >
-              {{ size.label }}
-              <span v-if="size.isStandard" class="ms-1 opacity-80">★</span>
-            </button>
-          </li>
-        </ul>
+        <label class="block max-w-sm">
+          <span class="field-label">انتخاب سایز</span>
+          <AppSelect
+            :model-value="selectedSizeId"
+            :options="[
+              { value: '', label: 'همه سایزها' },
+              ...standardSizes.map((size) => ({
+                value: size.id,
+                label: size.isStandard ? `${size.label} ★` : size.label,
+                hint: size.isStandard ? 'استاندارد' : 'جایگزین',
+              })),
+            ]"
+            size="sm"
+            searchable
+            @update:model-value="(value) => selectSize(String(value || ''))"
+          />
+        </label>
       </section>
 
       <LoadingSpinner :show="productsLoading" />

@@ -5,6 +5,7 @@ definePageMeta({ layout: 'admin', middleware: 'admin' });
 
 const api = useApi();
 const toast = useToast();
+const { confirm } = useConfirmDialog();
 
 type FormKind = 'make' | 'model' | 'trim' | 'fitment';
 
@@ -411,7 +412,12 @@ async function saveFitment() {
 }
 
 async function removeMake(id: string) {
-  if (!confirm('حذف برند و تمام مدل‌های زیرمجموعه؟')) return;
+  const ok = await confirm({
+    title: 'حذف برند',
+    message: 'برند و تمام مدل‌های زیرمجموعه حذف می‌شوند. این کار قابل بازگشت نیست.',
+    confirmText: 'حذف برند',
+  });
+  if (!ok) return;
   try {
     await api.delete(`/admin/vehicles/makes/${id}`);
     toast.success('حذف شد');
@@ -422,7 +428,12 @@ async function removeMake(id: string) {
 }
 
 async function removeModel(id: string) {
-  if (!confirm('حذف مدل و تیپ/سایزهای زیرمجموعه؟')) return;
+  const ok = await confirm({
+    title: 'حذف مدل',
+    message: 'مدل همراه با تیپ‌ها و سایزهای زیرمجموعه حذف می‌شود.',
+    confirmText: 'حذف مدل',
+  });
+  if (!ok) return;
   try {
     await api.delete(`/admin/vehicles/models/${id}`);
     toast.success('حذف شد');
@@ -433,7 +444,12 @@ async function removeModel(id: string) {
 }
 
 async function removeTrim(id: string) {
-  if (!confirm('حذف تیپ؟')) return;
+  const ok = await confirm({
+    title: 'حذف تیپ',
+    message: 'این تیپ از مدل خودرو حذف می‌شود.',
+    confirmText: 'حذف تیپ',
+  });
+  if (!ok) return;
   try {
     await api.delete(`/admin/vehicles/trims/${id}`);
     toast.success('حذف شد');
@@ -444,7 +460,12 @@ async function removeTrim(id: string) {
 }
 
 async function removeFitment(id: string) {
-  if (!confirm('حذف این سایز از خودرو؟')) return;
+  const ok = await confirm({
+    title: 'حذف سایز',
+    message: 'این سایز از لیست سایزهای خودرو حذف می‌شود.',
+    confirmText: 'حذف سایز',
+  });
+  if (!ok) return;
   try {
     await api.delete(`/admin/vehicle-fitments/${id}`);
     toast.success('حذف شد');

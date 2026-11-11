@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Product, Category, Pagination } from '~/types';
 import { STORE_MODE } from '~/constants/site';
-import { TIRE_SEASON_OPTIONS, TIRE_USAGE_OPTIONS } from '~/utils/tire';
+import { TIRE_SEASON_OPTIONS, TIRE_USAGE_OPTIONS, formatTireSizeLabel } from '~/utils/tire';
 
 const isTireStore = STORE_MODE === 'tire';
 
@@ -9,6 +9,7 @@ definePageMeta({ layout: 'admin', middleware: 'admin' });
 
 const api = useApi();
 const toast = useToast();
+const { confirm } = useConfirmDialog();
 const { formatPrice, resolveMediaUrl, formatNumber, formatShortDate } = useFormat();
 
 const PAGE_SIZE = 50;
@@ -19,6 +20,8 @@ const page = ref(1);
 const categories = ref<Category[]>([]);
 const loading = ref(true);
 const showForm = ref(false);
+const showMoreTireFields = ref(false);
+const nameTouched = ref(false);
 const editingId = ref<string | null>(null);
 const route = useRoute();
 const search = ref(typeof route.query.search === 'string' ? route.query.search : '');
@@ -77,6 +80,38 @@ const categoryOptions = computed(() =>
     icon: 'lucide:folder',
   }))
 );
+
+/** برای فروشنده لاستیک: انتخاب برند = همان دسته فروشگاه + نام برند روی کارت */
+const primaryCategoryId = computed({
+  get: () => form.categoryIds[0] ?? '',
+  set: (value: string | number) => {
+    const id = value ? String(value) : '';
+    form.categoryIds = id ? [id] : [];
+    if (isTireStore && id) {
+      const cat = categories.value.find((c) => c.id === id);
+      if (cat?.name) form.tireBrand = cat.name;
+    }
+  },
+});
+
+const sizePreview = computed(() =>
+  formatTireSizeLabel(form.tireWidth, form.tireAspect, form.tireRim)
+);
+
+const suggestedName = computed(() => {
+  if (!isTireStore) return '';
+  const brand = form.tireBrand.trim();
+  const size = sizePreview.value;
+  if (brand && size) return `${brand} ${size}`;
+  if (size) return `لاستیک ${size}`;
+  if (brand) return `لاستیک ${brand}`;
+  return '';
+});
+
+watch(suggestedName, (next) => {
+  if (!isTireStore || editingId.value || nameTouched.value || !next) return;
+  form.name = next;
+});
 
 const showingSold = computed(() => stockFilter.value === 'sold');
 
@@ -252,6 +287,8 @@ async function confirmBulkDelete() {
 }
 
 function openForm(product?: Product) {
+  nameTouched.value = Boolean(product);
+  showMoreTireFields.value = false;
   if (product) {
     editingId.value = product.id;
     Object.assign(form, {
@@ -261,7 +298,7 @@ function openForm(product?: Product) {
       price: product.price,
       discountPrice: product.discountPrice,
       stock: product.stock,
-      unit: product.unit || '',
+      unit: product.unit || (isTireStore ? 'حلقه' : ''),
       categoryIds: product.categoryIds?.length
         ? [...product.categoryIds]
         : product.categoryId
@@ -302,13 +339,13 @@ function openForm(product?: Product) {
       barcode: '',
       price: 0,
       discountPrice: null,
-      stock: 0,
-      unit: '',
-      categoryIds: [],
+      stock: 4,
+      unit: isTireStore ? 'حلقه' : '',
+      categoryIds: categories.value[0]?.id ? [categories.value[0].id] : [],
       image: null,
       images: [],
       isFeatured: false,
-      isNew: false,
+      isNew: true,
       isOldPrice: false,
       isHomeDeal: false,
       isHomeFeatured: false,
@@ -317,16 +354,16 @@ function openForm(product?: Product) {
       tireWidth: null,
       tireAspect: null,
       tireRim: null,
-      tireBrand: '',
+      tireBrand: categories.value[0]?.name || '',
       tireCountry: '',
-      tireSeason: '',
+      tireSeason: 'all-season',
       tirePattern: '',
       tireLoadIndex: '',
       tireSpeedIndex: '',
-      tireYear: null,
-      tireTubeless: false,
+      tireYear: new Date().getFullYear(),
+      tireTubeless: true,
       tireRunFlat: false,
-      tireUsageType: '',
+      tireUsageType: 'passenger',
       tirePairDiscount: 0,
       tireSetDiscount: 0,
       seoTitle: '',
@@ -349,13 +386,29 @@ function onDiscountPriceInput(event: Event) {
 
 async function save() {
   if (!form.categoryIds.length) {
-    toast.error('حداقل یک دسته‌بندی انتخاب کنید');
+    toast.error(isTireStore ? 'برند / دسته را انتخاب کنید' : 'حداقل یک دسته‌بندی انتخاب کنید');
     return;
   }
 
+  if (isTireStore && (!form.tireWidth || !form.tireAspect || !form.tireRim)) {
+    toast.error('سایز لاستیک را کامل وارد کنید (عرض / فاق / رینگ)');
+    showMoreTireFields.value = false;
+    return;
+  }
+
+  if (!form.name.trim()) {
+    if (suggestedName.value) form.name = suggestedName.value;
+    else {
+      toast.error('نام محصول را وارد کنید');
+      return;
+    }
+  }
+
+  if (isTireStore && !form.unit.trim()) form.unit = 'حلقه';
+
   const price = toOptionalNumber(form.price);
   if (price === null || price <= 0) {
-    toast.error('قیمت باید یک عدد معتبر باشد');
+    toast.error('قیمت یک حلقه را وارد کنید');
     return;
   }
 
@@ -449,9 +502,13 @@ async function activate(product: Product) {
     toast.info('این محصول از قبل فعال است');
     return;
   }
-  if (!confirm(`محصول «${product.name}» دوباره در فروشگاه نمایش داده شود؟`)) {
-    return;
-  }
+  const ok = await confirm({
+    title: 'فعال‌سازی محصول',
+    message: `محصول «${product.name}» دوباره در فروشگاه نمایش داده شود؟`,
+    confirmText: 'فعال شود',
+    variant: 'default',
+  });
+  if (!ok) return;
 
   try {
     await api.put(`/admin/products/${product.id}`, { isActive: true });
@@ -462,25 +519,30 @@ async function activate(product: Product) {
   }
 }
 
-useHead({ title: 'محصولات - پنل مدیریت' });
+useHead({ title: `${isTireStore ? 'لاستیک‌ها' : 'محصولات'} - پنل مدیریت` });
 </script>
 
 <template>
   <div>
     <AdminPageHeader
-      title="مدیریت محصولات"
-      description="لاستیک‌ها را با فیلتر موجودی، برند و جستجو مدیریت کنید. برای پاک‌سازی ناموجودها فیلتر «فروخته‌شده» را بزنید."
+      :title="isTireStore ? 'لاستیک‌های فروشگاه' : 'مدیریت محصولات'"
+      :description="
+        isTireStore
+          ? 'برای ثبت سریع: دکمه افزودن → سایز و برند و قیمت را بزنید. جزئیات فنی اختیاری است.'
+          : 'محصولات را با فیلتر موجودی و جستجو مدیریت کنید.'
+      "
     >
       <template #actions>
-        <NuxtLink to="/admin/home-picks" class="btn-secondary !py-2 !px-3 text-sm">صفحه اول</NuxtLink>
-        <NuxtLink to="/admin/vehicles" class="btn-secondary !py-2 !px-3 text-sm">خودروها</NuxtLink>
-        <button type="button" class="btn-primary !py-2 !px-4 text-sm" @click="openForm()">افزودن محصول</button>
+        <NuxtLink v-if="isTireStore" to="/admin/categories" class="btn-secondary !py-2 !px-3 text-sm">برندها</NuxtLink>
+        <button type="button" class="btn-primary !py-2 !px-4 text-sm" @click="openForm()">
+          {{ isTireStore ? '+ افزودن لاستیک' : 'افزودن محصول' }}
+        </button>
       </template>
     </AdminPageHeader>
 
     <AdminFilterBar
-      title="جستجو و فیلتر محصولات"
-      hint="نام، برند یا سایز را بنویسید؛ سپس موجودی و وضعیت را محدود کنید."
+      :title="isTireStore ? 'جستجو بین لاستیک‌ها' : 'جستجو و فیلتر محصولات'"
+      :hint="isTireStore ? 'برند یا سایز را بنویسید (مثلاً نکسین یا 205/55R16)' : 'نام یا کد کالا را بنویسید'"
     >
       <template #search>
         <label class="admin-filter-field">
@@ -491,7 +553,7 @@ useHead({ title: 'محصولات - پنل مدیریت' });
               v-model="search"
               type="search"
               class="input-field"
-              placeholder="مثلاً کویر یا 185/65R15"
+              :placeholder="isTireStore ? 'مثلاً نکسین یا 185/65R15' : 'نام محصول'"
               @keyup.enter="resetToFirstPageAndLoad"
             />
           </div>
@@ -499,10 +561,13 @@ useHead({ title: 'محصولات - پنل مدیریت' });
       </template>
       <template #filters>
         <label class="admin-filter-field">
-          <span>برند / دسته</span>
+          <span>{{ isTireStore ? 'برند' : 'دسته‌بندی' }}</span>
           <AppSelect
             v-model="categoryFilter"
-            :options="[{ value: '', label: 'همه دسته‌ها', icon: 'lucide:layers' }, ...categoryOptions]"
+            :options="[
+              { value: '', label: isTireStore ? 'همه برندها' : 'همه دسته‌ها', icon: 'lucide:layers' },
+              ...categoryOptions,
+            ]"
             searchable
             @update:model-value="resetToFirstPageAndLoad"
           />
@@ -754,101 +819,164 @@ useHead({ title: 'محصولات - پنل مدیریت' });
     <!-- Product form modal -->
     <div v-if="showForm" class="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" @click.self="showForm = false">
       <div class="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
-        <h2 class="text-lg font-bold mb-4">{{ editingId ? 'ویرایش محصول' : 'افزودن محصول' }}</h2>
+        <h2 class="text-lg font-bold mb-1">
+          {{
+            isTireStore
+              ? editingId
+                ? 'ویرایش لاستیک'
+                : 'افزودن لاستیک'
+              : editingId
+                ? 'ویرایش محصول'
+                : 'افزودن محصول'
+          }}
+        </h2>
+        <p v-if="isTireStore" class="mb-4 text-xs leading-5 text-gray-500">
+          چهار چیز کافی است: سایز → برند → قیمت → موجودی. بقیه را می‌توانید بعداً پر کنید.
+        </p>
         <form class="space-y-4" @submit.prevent="save">
-          <AppImagesUpload
-            v-model="form.images"
-            upload-endpoint="/admin/products/upload"
-            label="تصاویر محصول"
-            hint="JPEG, PNG, WebP یا GIF — حداکثر ۵ مگابایت"
-          />
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">نام محصول</label>
-            <input v-model="form.name" required placeholder="مثلاً نکسین ۲۲۵/۴۵R۱۷" class="input-field" />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">کد / بارکد محصول</label>
-            <input
-              v-model="form.barcode"
-              type="text"
-              dir="ltr"
-              placeholder="مثلاً ۵۶۰"
-              class="input-field"
-            />
-            <p class="mt-1 text-xs text-gray-400">با همین کد در سفارش‌ها و داشبورد جستجو می‌شود.</p>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">توضیحات</label>
-            <textarea
-              v-model="form.description"
-              placeholder="توضیحات کوتاه محصول"
-              rows="3"
-              class="input-field resize-none"
-            />
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">قیمت (تومان)</label>
-              <input v-model.number="form.price" type="number" min="0" required class="input-field" dir="ltr" />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">قیمت با تخفیف</label>
-              <input
-                :value="form.discountPrice ?? ''"
-                type="number"
-                min="0"
-                placeholder="اختیاری — خالی = بدون تخفیف"
-                class="input-field"
-                dir="ltr"
-                @input="onDiscountPriceInput"
-              />
-            </div>
-          </div>
-
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">موجودی انبار</label>
-              <input v-model.number="form.stock" type="number" min="0" required class="input-field" dir="ltr" />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">واحد فروش</label>
-              <input v-model="form.unit" :placeholder="isTireStore ? 'حلقه' : 'عدد'" class="input-field" />
-              <p class="mt-1 text-xs text-gray-400">{{ isTireStore ? 'معمولاً «حلقه» — قیمت پایه برای یک حلقه است.' : 'روی کارت محصول، زیر نام دیده می‌شود.' }}</p>
-            </div>
-          </div>
-
           <template v-if="isTireStore">
-            <div class="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-3">
-              <p class="text-sm font-semibold text-gray-800">مشخصات لاستیک</p>
+            <div class="rounded-xl border border-red-100 bg-red-50/40 p-3 space-y-3">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-bold text-slate-900">۱) سایز</p>
+                <span
+                  v-if="sizePreview"
+                  class="rounded-full bg-white px-2.5 py-1 text-xs font-extrabold text-red-700 border border-red-100"
+                  dir="ltr"
+                >
+                  {{ sizePreview }}
+                </span>
+              </div>
               <div class="grid grid-cols-3 gap-2">
                 <label class="block">
                   <span class="mb-1 block text-xs font-semibold text-gray-600">عرض</span>
-                  <input v-model.number="form.tireWidth" type="number" class="input-field" placeholder="مثلاً ۲۰۵" dir="ltr" />
+                  <input v-model.number="form.tireWidth" type="number" required class="input-field" placeholder="۲۰۵" dir="ltr" />
                 </label>
                 <label class="block">
-                  <span class="mb-1 block text-xs font-semibold text-gray-600">نسبت (فاق)</span>
-                  <input v-model.number="form.tireAspect" type="number" class="input-field" placeholder="مثلاً ۵۵" dir="ltr" />
+                  <span class="mb-1 block text-xs font-semibold text-gray-600">فاق</span>
+                  <input v-model.number="form.tireAspect" type="number" required class="input-field" placeholder="۵۵" dir="ltr" />
                 </label>
                 <label class="block">
                   <span class="mb-1 block text-xs font-semibold text-gray-600">رینگ</span>
-                  <input v-model.number="form.tireRim" type="number" class="input-field" placeholder="مثلاً ۱۶" dir="ltr" />
+                  <input v-model.number="form.tireRim" type="number" required class="input-field" placeholder="۱۶" dir="ltr" />
                 </label>
               </div>
-              <div class="grid grid-cols-2 gap-2">
+            </div>
+
+            <div class="space-y-2">
+              <p class="text-sm font-bold text-slate-900">۲) برند</p>
+              <label class="block">
+                <AppSelect
+                  v-model="primaryCategoryId"
+                  :options="categoryOptions"
+                  placeholder="مثلاً نکسین"
+                  searchable
+                />
+                <p v-if="!categories.length" class="mt-1 text-[11px] text-amber-700">
+                  هنوز برندی ندارید —
+                  <NuxtLink to="/admin/categories" class="font-semibold underline">اول یک برند بسازید</NuxtLink>
+                </p>
+              </label>
+            </div>
+
+            <div class="space-y-3">
+              <p class="text-sm font-bold text-slate-900">۳) قیمت و موجودی</p>
+              <div class="grid grid-cols-2 gap-3">
                 <label class="block">
-                  <span class="mb-1 block text-xs font-semibold text-gray-600">برند لاستیک</span>
-                  <input v-model="form.tireBrand" class="input-field" placeholder="مثلاً نکسین" />
+                  <span class="mb-1 block text-xs font-semibold text-gray-600">قیمت هر حلقه (تومان)</span>
+                  <input v-model.number="form.price" type="number" min="0" required class="input-field" dir="ltr" placeholder="مثلاً ۲۵۰۰۰۰۰" />
                 </label>
+                <label class="block">
+                  <span class="mb-1 block text-xs font-semibold text-gray-600">قیمت با تخفیف</span>
+                  <input
+                    :value="form.discountPrice ?? ''"
+                    type="number"
+                    min="0"
+                    placeholder="ندارد؟ خالی بگذارید"
+                    class="input-field"
+                    dir="ltr"
+                    @input="onDiscountPriceInput"
+                  />
+                </label>
+              </div>
+              <label class="block">
+                <span class="mb-1 block text-xs font-semibold text-gray-600">چند حلقه موجود دارید؟</span>
+                <input v-model.number="form.stock" type="number" min="0" required class="input-field" dir="ltr" />
+              </label>
+            </div>
+
+            <div class="space-y-3">
+              <p class="text-sm font-bold text-slate-900">۴) عکس (اختیاری)</p>
+              <AppImagesUpload
+                v-model="form.images"
+                upload-endpoint="/admin/products/upload"
+                label="عکس لاستیک"
+                hint="الان لازم نیست — بعداً هم می‌توانید بگذارید"
+              />
+              <label class="block">
+                <span class="mb-1 block text-xs font-semibold text-gray-600">نام در فروشگاه</span>
+                <input
+                  v-model="form.name"
+                  required
+                  class="input-field"
+                  placeholder="خودکار از برند + سایز پر می‌شود"
+                  @input="nameTouched = true"
+                />
+                <p v-if="suggestedName && form.name !== suggestedName" class="mt-1 text-[11px] text-gray-400">
+                  پیشنهاد:
+                  <button type="button" class="font-semibold text-red-600 underline" @click="form.name = suggestedName; nameTouched = false">
+                    {{ suggestedName }}
+                  </button>
+                </p>
+              </label>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">وضعیت در فروشگاه</label>
+              <div class="flex flex-wrap gap-2">
+                <AppToggleChip v-model="form.isActive" label="قابل فروش" icon="lucide:eye" />
+                <AppToggleChip v-model="form.isNew" label="برچسب جدید" icon="lucide:badge-plus" />
+                <AppToggleChip v-model="form.isHomeDeal" label="تخفیف صفحه اول" icon="lucide:percent" />
+                <AppToggleChip v-model="form.isHomeFeatured" label="ویژه صفحه اول" icon="lucide:house" />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700"
+              @click="showMoreTireFields = !showMoreTireFields"
+            >
+              <span>جزئیات بیشتر (اختیاری)</span>
+              <AppIcon
+                name="lucide:chevron-down"
+                size="sm"
+                class="transition-transform"
+                :class="{ 'rotate-180': showMoreTireFields }"
+              />
+            </button>
+
+            <div v-if="showMoreTireFields" class="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-3">
+              <label class="block">
+                <span class="mb-1 block text-xs font-semibold text-gray-600">کد کالا / بارکد</span>
+                <input v-model="form.barcode" type="text" dir="ltr" placeholder="اختیاری" class="input-field" />
+              </label>
+              <label class="block">
+                <span class="mb-1 block text-xs font-semibold text-gray-600">نام برند روی کارت (اگر با لیست فرق دارد)</span>
+                <input v-model="form.tireBrand" class="input-field" placeholder="معمولاً همان برند بالا" />
+              </label>
+              <label class="block">
+                <span class="mb-1 block text-xs font-semibold text-gray-600">توضیحات</span>
+                <textarea v-model="form.description" placeholder="مثلاً مناسب سواری شهری" rows="2" class="input-field resize-none" />
+              </label>
+              <div class="grid grid-cols-2 gap-2">
                 <label class="block">
                   <span class="mb-1 block text-xs font-semibold text-gray-600">کشور سازنده</span>
                   <input v-model="form.tireCountry" class="input-field" placeholder="مثلاً کره" />
                 </label>
+                <label class="block">
+                  <span class="mb-1 block text-xs font-semibold text-gray-600">سال تولید</span>
+                  <input v-model.number="form.tireYear" type="number" class="input-field" placeholder="۲۰۲۴" dir="ltr" />
+                </label>
               </div>
-              <hr class="border-gray-200" />
               <label class="block">
                 <span class="mb-1 block text-xs font-semibold text-gray-600">فصل</span>
                 <select v-model="form.tireSeason" class="input-field">
@@ -866,76 +994,76 @@ useHead({ title: 'محصولات - پنل مدیریت' });
               <div class="grid grid-cols-2 gap-2">
                 <label class="block">
                   <span class="mb-1 block text-xs font-semibold text-gray-600">شاخص بار</span>
-                  <input v-model="form.tireLoadIndex" class="input-field" placeholder="مثلاً ۸۸" dir="ltr" />
+                  <input v-model="form.tireLoadIndex" class="input-field" placeholder="۸۸" dir="ltr" />
                 </label>
                 <label class="block">
                   <span class="mb-1 block text-xs font-semibold text-gray-600">شاخص سرعت</span>
-                  <input v-model="form.tireSpeedIndex" class="input-field" placeholder="مثلاً H" dir="ltr" />
+                  <input v-model="form.tireSpeedIndex" class="input-field" placeholder="H" dir="ltr" />
                 </label>
               </div>
               <label class="block">
-                <span class="mb-1 block text-xs font-semibold text-gray-600">طرح آج</span>
-                <input v-model="form.tirePattern" class="input-field" placeholder="نام گل / طرح آج" />
-              </label>
-              <label class="block">
-                <span class="mb-1 block text-xs font-semibold text-gray-600">سال تولید</span>
-                <input v-model.number="form.tireYear" type="number" class="input-field" placeholder="مثلاً ۲۰۲۴" dir="ltr" />
+                <span class="mb-1 block text-xs font-semibold text-gray-600">طرح آج / گل</span>
+                <input v-model="form.tirePattern" class="input-field" placeholder="اختیاری" />
               </label>
               <div class="grid grid-cols-2 gap-2">
                 <label class="block">
                   <span class="mb-1 block text-xs font-semibold text-gray-600">تخفیف جفت ٪</span>
-                  <input v-model.number="form.tirePairDiscount" type="number" min="0" max="50" class="input-field" placeholder="۰ تا ۵۰" dir="ltr" />
+                  <input v-model.number="form.tirePairDiscount" type="number" min="0" max="50" class="input-field" placeholder="۰" dir="ltr" />
                 </label>
                 <label class="block">
-                  <span class="mb-1 block text-xs font-semibold text-gray-600">تخفیف ست ٪</span>
-                  <input v-model.number="form.tireSetDiscount" type="number" min="0" max="50" class="input-field" placeholder="۰ تا ۵۰" dir="ltr" />
+                  <span class="mb-1 block text-xs font-semibold text-gray-600">تخفیف چهارحلقه ٪</span>
+                  <input v-model.number="form.tireSetDiscount" type="number" min="0" max="50" class="input-field" placeholder="۰" dir="ltr" />
                 </label>
               </div>
               <div class="flex flex-wrap gap-3 text-sm">
                 <label class="flex items-center gap-2"><input v-model="form.tireTubeless" type="checkbox" /> تیوبلس</label>
                 <label class="flex items-center gap-2"><input v-model="form.tireRunFlat" type="checkbox" /> ران‌فلت</label>
               </div>
-              <input v-model="form.seoTitle" class="input-field" placeholder="عنوان سئو (اختیاری)" />
-              <textarea v-model="form.seoDescription" rows="2" class="input-field" placeholder="توضیح سئو (اختیاری)" />
             </div>
           </template>
 
-          <div v-else>
-            <label class="block text-sm font-medium text-gray-700 mb-1">سایز، رنگ و موجودی هر تنوع</label>
-            <textarea
-              v-model="form.clothingMetaJson"
-              rows="5"
-              dir="ltr"
-              class="input-field font-mono text-xs"
-              placeholder='{"sizes":["S","M","L"],"colors":[{"name":"مشکی","hex":"#111"}],"variants":[{"color":"مشکی","size":"M","stock":3}]}'
+          <template v-else>
+            <AppImagesUpload
+              v-model="form.images"
+              upload-endpoint="/admin/products/upload"
+              label="تصاویر محصول"
+              hint="JPEG, PNG, WebP یا GIF — حداکثر ۵ مگابایت"
             />
-            <p class="text-xs leading-5 text-gray-400 mt-1">
-              فقط اگر سایز و رنگ جدا دارید پر کنید. sizes فهرست سایز، colors رنگ‌ها و variants موجودی هر ترکیب است. اگر خالی بماند، فقط موجودی کلی بالا استفاده می‌شود.
-            </p>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">دسته‌بندی‌ها</label>
-            <AppMultiSelect
-              v-model="form.categoryIds"
-              :options="categoryOptions"
-              placeholder="یک یا چند دسته‌بندی انتخاب کنید"
-              searchable
-              required
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">وضعیت نمایش</label>
-            <div class="flex flex-wrap gap-2">
-              <AppToggleChip v-model="form.isNew" label="جدید" icon="lucide:badge-plus" />
-              <AppToggleChip v-model="form.isHomeDeal" label="تخفیف‌دار صفحه اول" icon="lucide:percent" />
-              <AppToggleChip v-model="form.isHomeFeatured" label="ویژه صفحه اول" icon="lucide:house" />
-              <AppToggleChip v-model="form.isActive" label="فعال در فروشگاه" icon="lucide:eye" />
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">نام محصول</label>
+              <input v-model="form.name" required class="input-field" />
             </div>
-          </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">قیمت</label>
+                <input v-model.number="form.price" type="number" min="0" required class="input-field" dir="ltr" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">موجودی</label>
+                <input v-model.number="form.stock" type="number" min="0" required class="input-field" dir="ltr" />
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">دسته‌بندی‌ها</label>
+              <AppMultiSelect
+                v-model="form.categoryIds"
+                :options="categoryOptions"
+                placeholder="یک یا چند دسته‌بندی"
+                searchable
+                required
+              />
+            </div>
+          </template>
 
-          <button type="submit" class="btn-primary w-full">ذخیره</button>
+          <button type="submit" class="btn-primary w-full">
+            {{
+              editingId
+                ? 'ذخیره تغییرات'
+                : isTireStore
+                  ? 'ثبت لاستیک'
+                  : 'ثبت محصول'
+            }}
+          </button>
         </form>
       </div>
     </div>

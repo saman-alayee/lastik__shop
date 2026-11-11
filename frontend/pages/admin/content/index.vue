@@ -6,6 +6,7 @@ definePageMeta({ layout: 'admin', middleware: 'admin' });
 
 const api = useApi();
 const toast = useToast();
+const { confirm } = useConfirmDialog();
 
 const DEFAULT_TERMS = `# قوانین و مقررات ${SITE_NAME}
 
@@ -90,9 +91,16 @@ function rememberSaved() {
   });
 }
 
-function selectPage(page: ContentPage) {
+async function selectPage(page: ContentPage) {
   if (editing.value && page.slug !== editing.value.slug && isDirty.value) {
-    if (!confirm('تغییرات ذخیره‌نشده از بین می‌رود. ادامه می‌دهید؟')) return;
+    const ok = await confirm({
+      title: 'تغییرات ذخیره‌نشده',
+      message: 'تغییرات ذخیره‌نشده از بین می‌رود. ادامه می‌دهید؟',
+      confirmText: 'ادامه',
+      cancelText: 'ماندن',
+      variant: 'warning',
+    });
+    if (!ok) return;
   }
   editing.value = page;
   form.title = page.title;

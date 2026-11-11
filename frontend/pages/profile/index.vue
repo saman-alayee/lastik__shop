@@ -1,525 +1,455 @@
 <script setup lang="ts">
+import type { Order, Pagination, Product } from '~/types';
 import { SITE_NAME, STORE_MODE } from '~/constants/site';
 
 definePageMeta({ layout: 'profile', middleware: 'auth' });
 
-const authStore = useAuthStore();
 const api = useApi();
-const { toPersianDigits, formatNumber } = useFormat();
+const { fetchFavorites } = useFavorites();
+const { formatPrice, getProductImage, toPersianDigits } = useFormat();
+const cartStore = useCartStore();
+const toast = useToast();
 
 const isTireStore = STORE_MODE === 'tire';
-const stats = ref({ orders: 0, unread: 0, addresses: 0 });
 const loading = ref(true);
+const orders = ref<Order[]>([]);
+const favorites = ref<Product[]>([]);
+const addingId = ref<string | null>(null);
 
-const menuItems = [
-  {
-    to: '/profile/orders',
-    label: 'سفارش‌های من',
-    desc: isTireStore ? 'پیگیری تکی، جفت و دو جفت' : 'پیگیری وضعیت خریدها',
-    icon: 'lucide:package',
-  },
-  {
-    to: '/profile/favorites',
-    label: 'علاقه‌مندی‌ها',
-    desc: 'محصولات ذخیره‌شده',
-    icon: 'lucide:bookmark',
-  },
-  {
-    to: '/profile/notifications',
-    label: 'اعلان‌ها',
-    desc: 'وضعیت ارسال و پیام‌ها',
-    icon: 'lucide:bell',
-    badge: true,
-  },
-  {
-    to: '/profile/addresses',
-    label: 'آدرس‌های من',
-    desc: 'مدیریت آدرس تحویل',
-    icon: 'lucide:map-pin',
-  },
-  {
-    to: '/profile/edit',
-    label: 'اطلاعات حساب',
-    desc: 'نام و تنظیمات پروفایل',
-    icon: 'lucide:user-cog',
-  },
-  {
-    to: '/profile/password',
-    label: 'رمز عبور',
-    desc: 'تعیین یا تغییر رمز ورود',
-    icon: 'lucide:key-round',
-  },
-];
-
-const packGuide = [
-  { key: 'single', label: 'تکی', detail: '۱ حلقه', icon: '1' },
-  { key: 'pair', label: 'جفت', detail: '۲ حلقه', icon: '2' },
-  { key: 'set', label: 'دو جفت', detail: '۴ حلقه', icon: '4' },
-];
-
-const initials = computed(() => {
-  const u = authStore.user;
-  if (u?.firstName && u?.lastName) {
-    return `${u.firstName.charAt(0)}${u.lastName.charAt(0)}`;
-  }
-  if (u?.firstName) return u.firstName.slice(0, 2);
-  return u?.phone?.slice(-2) || '؟';
+const orderBuckets = computed(() => {
+  const current = orders.value.filter((o) =>
+    ['NEW', 'REVIEWING', 'PREPARING', 'SHIPPED'].includes(o.status)
+  ).length;
+  const delivered = orders.value.filter((o) => o.status === 'DELIVERED').length;
+  const cancelled = orders.value.filter((o) => o.status === 'CANCELLED').length;
+  return [
+    {
+      key: 'current',
+      label: 'جاری',
+      count: current,
+      to: '/profile/orders?status=current',
+      icon: 'lucide:package-search',
+      tone: 'current',
+    },
+    {
+      key: 'delivered',
+      label: 'تحویل شده',
+      count: delivered,
+      to: '/profile/orders?status=DELIVERED',
+      icon: 'lucide:package-check',
+      tone: 'delivered',
+    },
+    {
+      key: 'cancelled',
+      label: 'لغو شده',
+      count: cancelled,
+      to: '/profile/orders?status=CANCELLED',
+      icon: 'lucide:package-x',
+      tone: 'cancelled',
+    },
+  ];
 });
 
-const displayName = computed(() => authStore.fullName || 'حساب کاربری');
+const favoritePreview = computed(() => favorites.value.slice(0, 8));
 
 onMounted(async () => {
   loading.value = true;
   try {
-    const [ordersRes, notifRes, addrRes] = await Promise.all([
-      api.get<{ pagination: { total: number } }>('/orders?limit=1'),
-      api.get<{ unreadCount: number }>('/notifications'),
-      api.get<unknown[]>('/addresses'),
+    const [ordersRes, favs] = await Promise.all([
+      api.get<{ orders: Order[]; pagination: Pagination }>('/orders?limit=50'),
+      fetchFavorites().catch(() => [] as Product[]),
     ]);
-    stats.value = {
-      orders: ordersRes.data.pagination?.total ?? 0,
-      unread: notifRes.data.unreadCount ?? 0,
-      addresses: Array.isArray(addrRes.data) ? addrRes.data.length : 0,
-    };
+    orders.value = ordersRes.data.orders ?? [];
+    favorites.value = favs ?? [];
   } catch {
-    // ignore
+    orders.value = [];
+    favorites.value = [];
   } finally {
     loading.value = false;
   }
 });
 
+async function addFavoriteToCart(product: Product) {
+  if (addingId.value) return;
+  addingId.value = product.id;
+  try {
+    await cartStore.addItem(product.id, 1);
+    toast.success('به سبد خرید اضافه شد');
+  } catch (e: unknown) {
+    toast.error(e instanceof Error ? e.message : 'افزودن به سبد انجام نشد');
+  } finally {
+    addingId.value = null;
+  }
+}
+
 useHead({ title: `حساب کاربری - ${SITE_NAME}` });
 </script>
 
 <template>
-  <div class="profile-home">
-    <section class="profile-hero">
-      <div class="profile-hero__glow" aria-hidden="true" />
-      <div class="profile-hero__grid" aria-hidden="true" />
-
-      <div class="profile-hero__top">
-        <div class="profile-hero__avatar">{{ initials }}</div>
-        <div class="profile-hero__who min-w-0">
-          <p class="profile-hero__eyebrow">حساب کاربری</p>
-          <h1 class="profile-hero__name truncate">{{ displayName }}</h1>
-          <p class="profile-hero__phone" dir="ltr">{{ toPersianDigits(authStore.user?.phone || '') }}</p>
-          <span v-if="authStore.isAdmin" class="profile-hero__badge">مدیر سیستم</span>
-        </div>
-      </div>
-
-      <div v-if="!loading" class="profile-stats">
-        <NuxtLink to="/profile/orders" class="profile-stat">
-          <strong>{{ formatNumber(stats.orders) }}</strong>
-          <span>سفارش</span>
-        </NuxtLink>
-        <NuxtLink to="/profile/notifications" class="profile-stat">
-          <strong>{{ formatNumber(stats.unread) }}</strong>
-          <span>اعلان</span>
-        </NuxtLink>
-        <NuxtLink to="/profile/addresses" class="profile-stat">
-          <strong>{{ formatNumber(stats.addresses) }}</strong>
-          <span>آدرس</span>
+  <div class="pdash">
+    <section class="pdash-card">
+      <div class="pdash-card__head">
+        <h2>سفارش‌های من</h2>
+        <NuxtLink to="/profile/orders" class="pdash-card__link">
+          مشاهده همه
+          <AppIcon name="lucide:chevron-left" size="sm" />
         </NuxtLink>
       </div>
-    </section>
 
-    <section v-if="isTireStore" class="pack-guide" aria-label="راهنمای خرید لاستیک">
-      <div class="pack-guide__head">
-        <h2>واحد خرید لاستیک</h2>
-        <p>سفارش‌ها بر اساس تعداد حلقه ثبت می‌شوند</p>
-      </div>
-      <ul class="pack-guide__list">
-        <li v-for="pack in packGuide" :key="pack.key" class="pack-guide__item">
-          <span class="pack-guide__count" aria-hidden="true">{{ pack.icon }}</span>
-          <span class="pack-guide__label">{{ pack.label }}</span>
-          <span class="pack-guide__detail">{{ pack.detail }}</span>
-        </li>
-      </ul>
-    </section>
+      <LoadingSpinner :show="loading" />
 
-    <section class="profile-nav">
-      <NuxtLink
-        v-for="item in menuItems"
-        :key="item.to"
-        :to="item.to"
-        class="profile-nav__item group"
-      >
-        <span class="profile-nav__icon">
-          <AppIcon :name="item.icon" size="md" />
-        </span>
-        <span class="profile-nav__copy min-w-0">
-          <span class="profile-nav__label">
-            {{ item.label }}
-            <span
-              v-if="item.badge && stats.unread > 0"
-              class="profile-nav__badge"
-            >{{ toPersianDigits(stats.unread) }}</span>
+      <div v-if="!loading" class="pdash-orders">
+        <NuxtLink
+          v-for="bucket in orderBuckets"
+          :key="bucket.key"
+          :to="bucket.to"
+          class="pdash-order"
+          :data-tone="bucket.tone"
+        >
+          <span class="pdash-order__icon">
+            <AppIcon :name="bucket.icon" size="lg" />
           </span>
-          <span class="profile-nav__desc">{{ item.desc }}</span>
-        </span>
-        <AppIcon name="lucide:chevron-left" size="sm" class="profile-nav__chevron" />
-      </NuxtLink>
-
-      <NuxtLink
-        v-if="authStore.isAdmin"
-        to="/admin"
-        class="profile-nav__item profile-nav__item--admin"
-      >
-        <span class="profile-nav__icon profile-nav__icon--admin">
-          <AppIcon name="lucide:layout-dashboard" size="md" />
-        </span>
-        <span class="profile-nav__copy">
-          <span class="profile-nav__label">پنل مدیریت</span>
-          <span class="profile-nav__desc">مدیریت فروشگاه</span>
-        </span>
-        <AppIcon name="lucide:chevron-left" size="sm" class="profile-nav__chevron" />
-      </NuxtLink>
+          <span class="pdash-order__meta">
+            <strong>{{ toPersianDigits(bucket.count) }} سفارش</strong>
+            <span>{{ bucket.label }}</span>
+          </span>
+        </NuxtLink>
+      </div>
     </section>
 
-    <footer class="profile-foot">
-      <NuxtLink to="/pages/terms" class="profile-foot__link">
-        <AppIcon name="lucide:file-text" size="sm" />
-        قوانین و مقررات
-      </NuxtLink>
-      <button
-        type="button"
-        class="profile-foot__logout"
-        @click="authStore.logout(); navigateTo('/')"
+    <section class="pdash-card">
+      <div class="pdash-card__head">
+        <h2>
+          {{ isTireStore ? 'از علاقه‌مندی‌های شما' : 'از لیست‌های شما' }}
+          <span class="pdash-card__accent" aria-hidden="true" />
+        </h2>
+        <NuxtLink to="/profile/favorites" class="pdash-card__link">
+          مشاهده همه
+          <AppIcon name="lucide:chevron-left" size="sm" />
+        </NuxtLink>
+      </div>
+
+      <div v-if="!loading && favoritePreview.length" class="pdash-favs">
+        <article v-for="product in favoritePreview" :key="product.id" class="pdash-fav">
+          <NuxtLink :to="`/products/${product.slug}`" class="pdash-fav__media">
+            <img
+              :src="getProductImage(product.image)"
+              :alt="product.name"
+              loading="lazy"
+              width="160"
+              height="160"
+            />
+          </NuxtLink>
+          <NuxtLink :to="`/products/${product.slug}`" class="pdash-fav__title">
+            {{ product.name }}
+          </NuxtLink>
+          <p
+            v-if="(product.stock ?? 0) > 0 && (product.stock ?? 0) <= 4"
+            class="pdash-fav__stock"
+          >
+            تنها {{ toPersianDigits(product.stock || 0) }} عدد در انبار باقی مانده
+          </p>
+          <p class="pdash-fav__price">
+            <strong>{{ formatPrice(product.effectivePrice) }}</strong>
+          </p>
+          <button
+            type="button"
+            class="pdash-fav__cart"
+            :disabled="addingId === product.id || !((product.stock ?? 0) > 0)"
+            @click="addFavoriteToCart(product)"
+          >
+            <AppIcon name="lucide:shopping-cart" size="sm" />
+            {{
+              !((product.stock ?? 0) > 0)
+                ? 'ناموجود'
+                : addingId === product.id
+                  ? '…'
+                  : 'افزودن به سبد'
+            }}
+          </button>
+        </article>
+      </div>
+
+      <EmptyCatalogScene
+        v-else-if="!loading"
+        variant="favorites"
+        title="هنوز موردی ذخیره نکرده‌اید"
+        description="لاستیک‌های موردعلاقه را ذخیره کنید تا اینجا ببینید."
+        class="!py-8"
       >
-        <AppIcon name="lucide:log-out" size="sm" />
-        خروج از حساب
-      </button>
-    </footer>
+        <NuxtLink to="/shop" class="btn-primary btn-action text-sm px-5">رفتن به فروشگاه</NuxtLink>
+      </EmptyCatalogScene>
+    </section>
+
+    <section class="pdash-card pdash-quick">
+      <div class="pdash-card__head">
+        <h2>دسترسی سریع</h2>
+      </div>
+      <div class="pdash-quick__grid">
+        <NuxtLink to="/profile/addresses" class="pdash-quick__item">
+          <AppIcon name="lucide:map-pin" size="md" />
+          <span>آدرس‌ها</span>
+        </NuxtLink>
+        <NuxtLink to="/profile/notifications" class="pdash-quick__item">
+          <AppIcon name="lucide:bell" size="md" />
+          <span>اعلان‌ها</span>
+        </NuxtLink>
+        <NuxtLink to="/profile/edit" class="pdash-quick__item">
+          <AppIcon name="lucide:user-cog" size="md" />
+          <span>اطلاعات حساب</span>
+        </NuxtLink>
+        <NuxtLink to="/shop" class="pdash-quick__item">
+          <AppIcon name="shop:tire" size="md" />
+          <span>فروشگاه</span>
+        </NuxtLink>
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.profile-home {
-  --ink: #0f172a;
-  --muted: #64748b;
-  --line: #e2e8f0;
-  --red: #dc2626;
+.pdash {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
-  padding-bottom: 1.5rem;
+  gap: 0.85rem;
 }
 
-.profile-hero {
-  position: relative;
-  overflow: hidden;
-  border-radius: 1.6rem;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background:
-    linear-gradient(145deg, #0f172a 0%, #1e293b 48%, #334155 100%);
-  color: #fff;
-  padding: 1.35rem 1.2rem 1.2rem;
-  box-shadow: 0 18px 40px -28px rgba(15, 23, 42, 0.7);
+.pdash-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 1rem 1rem 1.1rem;
 }
 
-.profile-hero__glow {
-  position: absolute;
-  width: 14rem;
-  height: 14rem;
-  border-radius: 999px;
-  background: radial-gradient(circle, rgba(220, 38, 38, 0.35), transparent 70%);
-  top: -5rem;
-  inset-inline-end: -4rem;
-  pointer-events: none;
-}
-
-.profile-hero__grid {
-  position: absolute;
-  inset: 0;
-  opacity: 0.18;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.35) 0.7px, transparent 0.7px);
-  background-size: 12px 12px;
-  pointer-events: none;
-}
-
-.profile-hero__top {
-  position: relative;
-  z-index: 1;
+.pdash-card__head {
   display: flex;
   align-items: center;
-  gap: 0.95rem;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 }
 
-.profile-hero__avatar {
-  width: 4.25rem;
-  height: 4.25rem;
-  border-radius: 1.25rem;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  font-size: 1.15rem;
-  font-weight: 800;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08));
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(8px);
-}
-
-.profile-hero__eyebrow {
-  margin: 0;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: #fca5a5;
-}
-
-.profile-hero__name {
-  margin: 0.15rem 0 0;
-  font-size: 1.2rem;
-  font-weight: 900;
-  line-height: 1.35;
-}
-
-.profile-hero__phone {
-  margin: 0.2rem 0 0;
-  font-size: 0.82rem;
-  color: rgba(226, 232, 240, 0.85);
-}
-
-.profile-hero__badge {
-  display: inline-flex;
-  margin-top: 0.45rem;
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  background: rgba(220, 38, 38, 0.25);
-  border: 1px solid rgba(248, 113, 113, 0.35);
-}
-
-.profile-stats {
+.pdash-card__head h2 {
   position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.55rem;
-  margin-top: 1.15rem;
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #111827;
 }
 
-.profile-stat {
-  display: flex;
-  flex-direction: column;
+.pdash-card__accent {
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: -0.45rem;
+  width: 2.4rem;
+  height: 2px;
+  background: #e11d48;
+}
+
+.pdash-card__link {
+  display: inline-flex;
   align-items: center;
   gap: 0.15rem;
-  padding: 0.7rem 0.4rem;
-  border-radius: 1rem;
+  color: #2563eb;
+  font-size: 0.8rem;
+  font-weight: 700;
   text-decoration: none;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: background 180ms ease, transform 180ms ease;
+  white-space: nowrap;
 }
 
-.profile-stat:hover {
-  background: rgba(255, 255, 255, 0.14);
-  transform: translateY(-1px);
+.pdash-card__link:hover {
+  color: #1d4ed8;
 }
 
-.profile-stat strong {
-  font-size: 1.15rem;
-  font-weight: 900;
-  line-height: 1;
-}
-
-.profile-stat span {
-  font-size: 0.68rem;
-  color: rgba(226, 232, 240, 0.8);
-}
-
-.pack-guide {
-  border-radius: 1.35rem;
-  border: 1px solid var(--line);
-  background:
-    radial-gradient(90% 80% at 100% 0%, rgba(220, 38, 38, 0.06), transparent 55%),
-    #fff;
-  padding: 1rem 1rem 0.95rem;
-}
-
-.pack-guide__head h2 {
-  margin: 0;
-  font-size: 0.92rem;
-  font-weight: 800;
-  color: var(--ink);
-}
-
-.pack-guide__head p {
-  margin: 0.2rem 0 0;
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
-.pack-guide__list {
-  list-style: none;
-  margin: 0.85rem 0 0;
-  padding: 0;
+.pdash-orders {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
-.pack-guide__item {
+.pdash-order {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.7rem 0.35rem;
-  border-radius: 1rem;
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  gap: 0.55rem;
+  padding: 0.85rem 0.4rem;
+  border-radius: 0.65rem;
+  text-decoration: none;
+  color: inherit;
+  transition: background-color 0.15s ease;
+}
+
+.pdash-order:hover {
+  background: #f9fafb;
+}
+
+.pdash-order__icon {
+  display: grid;
+  place-items: center;
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.pdash-order[data-tone='delivered'] .pdash-order__icon {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.pdash-order[data-tone='cancelled'] .pdash-order__icon {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.pdash-order__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
   text-align: center;
 }
 
-.pack-guide__count {
-  width: 1.7rem;
-  height: 1.7rem;
-  border-radius: 0.55rem;
-  display: grid;
-  place-items: center;
-  font-size: 0.78rem;
-  font-weight: 900;
-  color: #fff;
-  background: linear-gradient(160deg, #dc2626, #991b1b);
-}
-
-.pack-guide__label {
+.pdash-order__meta strong {
   font-size: 0.82rem;
   font-weight: 800;
-  color: var(--ink);
+  color: #111827;
 }
 
-.pack-guide__detail {
-  font-size: 0.68rem;
-  color: var(--muted);
+.pdash-order__meta span {
+  font-size: 0.72rem;
+  color: #6b7280;
 }
 
-.profile-nav {
+.pdash-favs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(11.5rem, 14rem);
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  scrollbar-width: thin;
+}
+
+.pdash-fav {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.65rem;
+  border: 1px solid #f3f4f6;
+  border-radius: 0.65rem;
 }
 
-.profile-nav__item {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  padding: 0.9rem 0.95rem;
-  border-radius: 1.2rem;
-  border: 1px solid var(--line);
-  background: #fff;
-  text-decoration: none;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
-  transition:
-    transform 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.profile-nav__item:hover {
-  transform: translateY(-1px);
-  border-color: rgba(220, 38, 38, 0.28);
-  box-shadow: 0 12px 24px -18px rgba(15, 23, 42, 0.35);
-}
-
-.profile-nav__item--admin {
-  background: linear-gradient(180deg, #fff, #fff5f5);
-  border-color: rgba(220, 38, 38, 0.2);
-}
-
-.profile-nav__icon {
-  width: 2.7rem;
-  height: 2.7rem;
-  border-radius: 0.95rem;
+.pdash-fav__media {
   display: grid;
   place-items: center;
-  flex-shrink: 0;
-  color: #334155;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: #f9fafb;
 }
 
-.profile-nav__icon--admin {
-  color: #dc2626;
-  background: #fee2e2;
-  border-color: #fecaca;
+.pdash-fav__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
-.profile-nav__label {
+.pdash-fav__title {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 2.6em;
+  color: #111827;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.45;
+  text-decoration: none;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.pdash-fav__stock {
+  margin: 0;
+  color: #e11d48;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.pdash-fav__price {
+  margin: 0;
+  color: #111827;
+  font-size: 0.9rem;
+}
+
+.pdash-fav__cart {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.9rem;
-  font-weight: 800;
-  color: var(--ink);
-}
-
-.profile-nav__desc {
-  display: block;
-  margin-top: 0.12rem;
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.profile-nav__badge {
-  display: inline-flex;
-  min-width: 1.15rem;
   justify-content: center;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  font-size: 0.65rem;
+  gap: 0.35rem;
+  margin-top: auto;
+  min-height: 2.25rem;
+  border: 1px solid #fb7185;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #e11d48;
+  font-size: 0.75rem;
   font-weight: 800;
-  color: #fff;
-  background: var(--red);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
-.profile-nav__chevron {
-  margin-inline-start: auto;
-  color: #cbd5e1;
-  transition: color 160ms ease, transform 160ms ease;
+.pdash-fav__cart:hover:not(:disabled) {
+  background: #fff1f2;
 }
 
-.profile-nav__item:hover .profile-nav__chevron {
-  color: var(--red);
-  transform: translateX(-2px);
+.pdash-fav__cart:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
-.profile-foot {
+.pdash-quick__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+@media (min-width: 640px) {
+  .pdash-quick__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.pdash-quick__item {
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  padding: 0.25rem 0.15rem 0;
-}
-
-.profile-foot__link,
-.profile-foot__logout {
-  display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  font-size: 0.82rem;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  width: fit-content;
-}
-
-.profile-foot__link {
-  color: var(--muted);
+  padding: 0.9rem 0.5rem;
+  border: 1px solid #f3f4f6;
+  border-radius: 0.65rem;
+  color: #374151;
   text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.profile-foot__link:hover {
-  color: var(--ink);
+.pdash-quick__item:hover {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #be123c;
 }
 
-.profile-foot__logout {
-  color: #ef4444;
-}
+@media (max-width: 640px) {
+  .pdash-orders {
+    gap: 0.25rem;
+  }
 
-.profile-foot__logout:hover {
-  color: #b91c1c;
+  .pdash-order__icon {
+    width: 2.8rem;
+    height: 2.8rem;
+  }
 }
 </style>

@@ -272,29 +272,33 @@ usePageSeo(() => ({
     </EmptyCatalogScene>
   </div>
 
-  <div v-else class="bg-white pb-28 md:pb-12">
-    <div v-if="isDemoProduct" class="mx-auto max-w-[1240px] px-4 pt-3">
+  <div v-else class="pd-page pb-28 md:pb-14">
+    <div class="pd-page__wash" aria-hidden="true" />
+
+    <div v-if="isDemoProduct" class="relative mx-auto max-w-[1240px] px-4 pt-3">
       <AppAlertBanner variant="info" message="این محصول نمایشی است (تصاویر placeholder) — فقط برای پیش‌نمایش ظاهر فروشگاه." />
     </div>
-    <div class="mx-auto max-w-[1240px] px-4 pb-4 pt-8 md:pb-8 md:pt-14">
+
+    <div class="relative mx-auto max-w-[1240px] px-4 pb-6 pt-6 md:pb-10 md:pt-10">
       <nav
         v-if="crumbs.length"
         aria-label="مسیر صفحه"
-        class="mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-neutral-500"
+        class="mb-5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-slate-500"
       >
         <template v-for="(crumb, index) in crumbs" :key="`${crumb.label}-${index}`">
-          <span v-if="index" class="text-neutral-300" aria-hidden="true">/</span>
+          <span v-if="index" class="text-slate-300" aria-hidden="true">/</span>
           <NuxtLink
             v-if="crumb.to"
             :to="crumb.to"
-            class="transition-colors hover:text-neutral-950"
+            class="transition-colors hover:text-slate-900"
           >
             {{ crumb.label }}
           </NuxtLink>
-          <span v-else class="text-neutral-900" aria-current="page">{{ crumb.label }}</span>
+          <span v-else class="font-semibold text-slate-900" aria-current="page">{{ crumb.label }}</span>
         </template>
       </nav>
-      <div class="md:grid md:grid-cols-[minmax(220px,320px)_minmax(0,1fr)] md:items-start md:gap-8 lg:gap-12">
+
+      <div class="pd-page__layout">
         <ProductDetailGallery
           :images="galleryImages"
           :active-index="activeImageIndex"
@@ -328,53 +332,179 @@ usePageSeo(() => ({
 
     <ProductReviews v-if="product" :slug="product.slug" />
 
-    <section v-if="relatedProducts.length" class="mx-auto mt-6 max-w-[1240px] border-t border-gray-100 px-4 pb-6 pt-8">
-      <h2 class="mb-4 text-base font-bold text-[#3c322b]">محصولات مشابه</h2>
+    <section v-if="relatedProducts.length" class="relative mx-auto mt-2 max-w-[1240px] border-t border-slate-200/80 px-4 pb-8 pt-8">
+      <div class="mb-5 flex items-end justify-between gap-3">
+        <div>
+          <h2 class="text-base font-extrabold text-slate-900">
+            {{ isTireStore ? 'لاستیک‌های مشابه' : 'محصولات مشابه' }}
+          </h2>
+          <p class="mt-1 text-xs text-slate-500">گزینه‌های نزدیک از نظر سایز یا برند</p>
+        </div>
+        <NuxtLink to="/shop" class="text-xs font-bold text-accent-600 hover:text-accent-500">
+          همه محصولات
+        </NuxtLink>
+      </div>
       <ProductCardList :products="relatedProducts" layout="strip" />
     </section>
 
-    <div class="fixed inset-x-0 bottom-16 z-[55] border-t border-gray-100 bg-white px-4 py-3 md:hidden">
-      <div class="mx-auto flex max-w-lg items-center gap-3">
+    <div class="pd-mobile-bar md:hidden">
+      <div class="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-[11px] font-semibold text-slate-500">
+            {{ isTireStore ? 'قیمت هر حلقه' : 'قیمت' }}
+          </p>
+          <p
+            v-if="!canPurchase && quantity === 0"
+            class="text-sm font-extrabold text-red-700"
+          >
+            {{ unavailableLabel }}
+          </p>
+          <p v-else class="text-base font-extrabold tabular-nums text-slate-900">
+            {{ formatPrice(product.effectivePrice) }}
+          </p>
+        </div>
+
         <button
           v-if="quantity === 0 || justAdded || addingToCart"
           type="button"
-          class="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-sm text-white transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-gray-300"
-          :class="justAdded ? 'bg-[#1f8a4c]' : 'bg-primary-700'"
+          class="pd-mobile-bar__cta"
+          :class="{ 'is-success': justAdded }"
           :disabled="!canPurchase || addingToCart"
           @click="addToCart()"
         >
           <AppIcon v-if="justAdded" name="lucide:check" size="sm" />
-          {{ !canPurchase ? unavailableLabel : addingToCart ? 'در حال افزودن…' : justAdded ? 'به سبد اضافه شد' : 'افزودن به سبد خرید' }}
+          {{
+            !canPurchase
+              ? unavailableLabel
+              : addingToCart
+                ? '…'
+                : justAdded
+                  ? 'اضافه شد'
+                  : 'افزودن'
+          }}
         </button>
-        <div v-else class="inline-flex h-12 flex-1 items-center justify-between gap-3 rounded-lg bg-[#1f8a4c] px-3 text-white">
+
+        <div v-else class="pd-mobile-bar__qty">
           <button
             type="button"
-            class="flex h-8 w-8 items-center justify-center rounded-md bg-white/15"
+            class="pd-mobile-bar__qty-btn"
             aria-label="کم کردن"
             @click="quantity <= 1 ? cartStore.removeItem(product.id) : cartStore.updateQuantity(product.id, quantity - 1)"
           >
             <AppIcon name="lucide:minus" size="sm" />
           </button>
-          <span class="text-sm font-bold">{{ quantity }} در سبد</span>
+          <span class="text-sm font-bold">{{ quantity }}</span>
           <button
             type="button"
-            class="flex h-8 w-8 items-center justify-center rounded-md bg-white/15"
+            class="pd-mobile-bar__qty-btn"
             aria-label="زیاد کردن"
             @click="cartStore.updateQuantity(product.id, quantity + 1)"
           >
             <AppIcon name="lucide:plus" size="sm" />
           </button>
         </div>
-        <p
-          v-if="!canPurchase && quantity === 0"
-          class="max-w-[9.5rem] shrink-0 rounded bg-[#fde8e6] px-1.5 py-px text-[11px] font-semibold leading-5 text-[#b42318]"
-        >
-          {{ unavailableLabel }}
-        </p>
-        <p v-else class="shrink-0 text-base font-bold text-[#3c322b]">
-          {{ formatPrice(product.effectivePrice) }}
-        </p>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.pd-page {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+  background: #f8fafc;
+}
+
+.pd-page__wash {
+  pointer-events: none;
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: min(58vh, 560px);
+  background:
+    radial-gradient(ellipse 70% 55% at 85% -10%, rgba(220, 38, 38, 0.1), transparent 55%),
+    radial-gradient(ellipse 55% 45% at 0% 10%, rgba(30, 41, 59, 0.08), transparent 50%),
+    linear-gradient(180deg, #eef2f7 0%, #f8fafc 70%);
+  z-index: 0;
+}
+
+.pd-page__layout {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .pd-page__layout {
+    grid-template-columns: minmax(280px, 460px) minmax(0, 1fr);
+    align-items: start;
+    gap: 2.25rem;
+  }
+}
+
+@media (min-width: 1100px) {
+  .pd-page__layout {
+    grid-template-columns: minmax(340px, 520px) minmax(0, 1fr);
+    gap: 3rem;
+  }
+}
+
+.pd-mobile-bar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 4rem;
+  z-index: 55;
+  border-top: 1px solid rgba(226, 232, 240, 0.95);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.08);
+}
+
+.pd-mobile-bar__cta {
+  display: inline-flex;
+  height: 2.85rem;
+  min-width: 7.5rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  background: rgb(30 41 59);
+  padding: 0 1rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #fff;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.pd-mobile-bar__cta:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.pd-mobile-bar__cta:disabled {
+  cursor: not-allowed;
+  background: rgb(203 213 225);
+}
+
+.pd-mobile-bar__cta.is-success {
+  background: rgb(22 163 74);
+}
+
+.pd-mobile-bar__qty {
+  display: inline-flex;
+  height: 2.85rem;
+  min-width: 7.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: rgb(22 163 74);
+  padding: 0.25rem 0.4rem;
+  color: #fff;
+}
+
+.pd-mobile-bar__qty-btn {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.16);
+}
+</style>

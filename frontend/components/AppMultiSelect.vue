@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { SelectOption } from '~/components/AppSelect.vue';
+import type { AppSelectOption } from '~/components/AppSelect.vue';
 
 const props = withDefaults(
   defineProps<{
     modelValue: string[];
-    options: SelectOption[];
+    options: AppSelectOption[];
     placeholder?: string;
     disabled?: boolean;
     searchable?: boolean;
@@ -74,7 +74,7 @@ function isSelected(value: string | number) {
   return props.modelValue.includes(String(value));
 }
 
-function toggleOption(option: SelectOption) {
+function toggleOption(option: AppSelectOption) {
   if (option.disabled) return;
   const value = String(option.value);
   const next = isSelected(value)

@@ -56,24 +56,25 @@ usePageSeo({
     <div class="sticky top-14 z-30 min-w-0 bg-gray-50/95 backdrop-blur border-b border-gray-100 px-4 pt-4 pb-3">
       <h1 class="section-title mb-3">دسته‌بندی‌ها</h1>
 
-      <ChipStrip class="pb-1">
-        <NuxtLink
-          to="/categories"
-          class="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors bg-primary-600 text-white"
-          draggable="false"
-        >
-          همه
-        </NuxtLink>
-        <NuxtLink
-          v-for="category in categories"
-          :key="category.id"
-          :to="`/categories/${category.slug}`"
-          class="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200"
-          draggable="false"
-        >
-          {{ category.name }}
-        </NuxtLink>
-      </ChipStrip>
+      <label class="block max-w-sm">
+        <span class="field-label">انتخاب دسته</span>
+        <AppSelect
+          model-value="__all__"
+          :options="[
+            { value: '__all__', label: 'همه دسته‌ها' },
+            ...(categories ?? []).map((category) => ({
+              value: category.slug,
+              label: category.name,
+            })),
+          ]"
+          searchable
+          size="sm"
+          @update:model-value="(value) => {
+            const next = String(value || '');
+            if (next && next !== '__all__') navigateTo(`/categories/${next}`);
+          }"
+        />
+      </label>
     </div>
 
     <LoadingSpinner :show="loading" />

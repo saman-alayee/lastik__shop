@@ -311,25 +311,15 @@ usePageSeo(() => ({
       </div>
 
       <div>
-        <div class="mb-3 flex items-center gap-3">
-          <span class="shrink-0 text-xs font-semibold text-slate-500">مرتب‌سازی:</span>
-          <div class="flex gap-2">
-            <button
-              v-for="option in sortOptions"
-              :key="option.value"
-              type="button"
-              :class="[
-                'rounded-full px-4 py-2 text-sm font-semibold border transition-colors',
-                sort === option.value
-                  ? 'bg-red-600 text-white border-red-600'
-                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300',
-              ]"
-              @click="setSort(option.value)"
-            >
-              {{ option.label }}
-            </button>
-          </div>
-        </div>
+        <label class="mb-3 block max-w-xs">
+          <span class="mb-1 block text-xs font-semibold text-slate-500">مرتب‌سازی</span>
+          <AppSelect
+            :model-value="sort"
+            :options="sortOptions"
+            size="sm"
+            @update:model-value="(value) => setSort(String(value) as SortMode)"
+          />
+        </label>
 
         <LoadingSpinner :show="loading" />
         <ProductCardList v-if="!loading" :products="products" />

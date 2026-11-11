@@ -40,8 +40,16 @@ const emit = defineEmits<{
 const open = ref(false);
 const query = ref('');
 const rootRef = ref<HTMLElement | null>(null);
+const triggerRef = ref<HTMLElement | null>(null);
 const listRef = ref<HTMLElement | null>(null);
 const activeIndex = ref(-1);
+const menuId = `app-select-${Math.random().toString(36).slice(2, 9)}`;
+const menuStyle = ref<Record<string, string>>({
+  top: '0px',
+  left: '0px',
+  width: '0px',
+  maxHeight: '16rem',
+});
 
 const selected = computed(() =>
   props.options.find((o) => String(o.value) === String(props.modelValue ?? ''))
@@ -58,6 +66,25 @@ const filtered = computed(() => {
   );
 });
 
+function updateMenuPosition() {
+  if (!triggerRef.value) return;
+  const rect = triggerRef.value.getBoundingClientRect();
+  const viewportPad = 8;
+  const preferredHeight = 280;
+  const spaceBelow = window.innerHeight - rect.bottom - viewportPad;
+  const spaceAbove = rect.top - viewportPad;
+  const openUp = spaceBelow < Math.min(preferredHeight, 180) && spaceAbove > spaceBelow;
+  const maxHeight = Math.max(140, Math.min(preferredHeight, openUp ? spaceAbove - 8 : spaceBelow - 8));
+
+  menuStyle.value = {
+    top: openUp ? `${rect.top - 8}px` : `${rect.bottom + 8}px`,
+    left: `${Math.max(viewportPad, Math.min(rect.left, window.innerWidth - rect.width - viewportPad))}px`,
+    width: `${rect.width}px`,
+    maxHeight: `${maxHeight}px`,
+    transform: openUp ? 'translateY(-100%)' : '',
+  };
+}
+
 function toggle() {
   if (props.disabled) return;
   open.value = !open.value;
@@ -66,6 +93,7 @@ function toggle() {
     const idx = filtered.value.findIndex((o) => String(o.value) === String(props.modelValue ?? ''));
     activeIndex.value = idx >= 0 ? idx : 0;
     nextTick(() => {
+      updateMenuPosition();
       listRef.value?.querySelector<HTMLElement>('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
     });
   }
@@ -126,12 +154,29 @@ function scrollActive() {
 }
 
 function onDocPointer(e: PointerEvent) {
-  if (!open.value || !rootRef.value) return;
-  if (!rootRef.value.contains(e.target as Node)) close();
+  if (!open.value) return;
+  const target = e.target as Node;
+  if (rootRef.value?.contains(target)) return;
+  const menu = document.getElementById(menuId);
+  if (menu?.contains(target)) return;
+  close();
 }
 
-onMounted(() => document.addEventListener('pointerdown', onDocPointer));
-onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointer));
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocPointer);
+  window.addEventListener('resize', updateMenuPosition);
+  window.addEventListener('scroll', updateMenuPosition, true);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', onDocPointer);
+  window.removeEventListener('resize', updateMenuPosition);
+  window.removeEventListener('scroll', updateMenuPosition, true);
+});
+
+watch(open, (isOpen) => {
+  if (isOpen) nextTick(updateMenuPosition);
+});
 
 watch(
   () => props.disabled,
@@ -152,11 +197,13 @@ watch(
     ]"
   >
     <button
+      ref="triggerRef"
       type="button"
       class="app-select__trigger"
       :disabled="disabled"
       :aria-expanded="open"
       aria-haspopup="listbox"
+      :aria-controls="menuId"
       @click="toggle"
       @keydown="onKeydown"
     >
@@ -184,58 +231,66 @@ watch(
       </span>
     </button>
 
-    <Transition name="app-select-menu">
-      <div v-if="open" class="app-select__menu" role="listbox">
-        <div v-if="searchable" class="app-select__search">
-          <label class="app-select__search-box">
-            <AppIcon name="lucide:search" size="sm" class="app-select__search-icon" />
-            <input
-              v-model="query"
-              type="search"
-              class="app-select__search-input"
-              :placeholder="searchPlaceholder"
-              @keydown="onKeydown"
-            />
-          </label>
-        </div>
+    <Teleport to="body">
+      <Transition name="app-select-menu">
+        <div
+          v-if="open"
+          :id="menuId"
+          class="app-select__menu"
+          role="listbox"
+          :style="menuStyle"
+        >
+          <div v-if="searchable" class="app-select__search">
+            <label class="app-select__search-box">
+              <AppIcon name="lucide:search" size="sm" class="app-select__search-icon" />
+              <input
+                v-model="query"
+                type="search"
+                class="app-select__search-input"
+                :placeholder="searchPlaceholder"
+                @keydown="onKeydown"
+              />
+            </label>
+          </div>
 
-        <div ref="listRef" class="app-select__list">
-          <button
-            v-for="(option, index) in filtered"
-            :key="String(option.value)"
-            type="button"
-            class="app-select__option"
-            :class="{
-              'is-selected': String(option.value) === String(modelValue ?? ''),
-              'is-active': index === activeIndex,
-              'is-disabled': option.disabled,
-            }"
-            :data-active="index === activeIndex"
-            :disabled="option.disabled"
-            role="option"
-            :aria-selected="String(option.value) === String(modelValue ?? '')"
-            @mouseenter="activeIndex = index"
-            @click="pick(option)"
-          >
-            <span class="app-select__option-main">
-              <AppIcon v-if="option.icon" :name="option.icon" size="sm" class="shrink-0 opacity-80" />
-              <span class="min-w-0">
-                <span class="app-select__option-label">{{ option.label }}</span>
-                <span v-if="option.hint" class="app-select__option-hint">{{ option.hint }}</span>
+          <div ref="listRef" class="app-select__list">
+            <button
+              v-for="(option, index) in filtered"
+              :key="String(option.value)"
+              type="button"
+              class="app-select__option"
+              :class="{
+                'is-selected': String(option.value) === String(modelValue ?? ''),
+                'is-active': index === activeIndex,
+                'is-disabled': option.disabled,
+              }"
+              :data-active="index === activeIndex"
+              :disabled="option.disabled"
+              role="option"
+              :aria-selected="String(option.value) === String(modelValue ?? '')"
+              @mouseenter="activeIndex = index"
+              @click="pick(option)"
+            >
+              <span class="app-select__option-main">
+                <AppIcon v-if="option.icon" :name="option.icon" size="sm" class="shrink-0 opacity-80" />
+                <span class="min-w-0">
+                  <span class="app-select__option-label">{{ option.label }}</span>
+                  <span v-if="option.hint" class="app-select__option-hint">{{ option.hint }}</span>
+                </span>
               </span>
-            </span>
-            <AppIcon
-              v-if="String(option.value) === String(modelValue ?? '')"
-              name="lucide:check"
-              size="sm"
-              class="app-select__check"
-            />
-          </button>
+              <AppIcon
+                v-if="String(option.value) === String(modelValue ?? '')"
+                name="lucide:check"
+                size="sm"
+                class="app-select__check"
+              />
+            </button>
 
-          <p v-if="!filtered.length" class="app-select__empty">موردی پیدا نشد</p>
+            <p v-if="!filtered.length" class="app-select__empty">موردی پیدا نشد</p>
+          </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -278,46 +333,22 @@ watch(
 }
 .app-select--soft .app-select__trigger {
   background: #f8fafc;
+  border-color: #e2e8f0;
 }
 .app-select--hero .app-select__trigger {
-  min-height: 2.85rem;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: rgba(2, 6, 23, 0.45);
-  border-radius: 0.75rem;
-  padding-inline: 0.75rem;
-  box-shadow: none;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(255, 255, 255, 0.35);
 }
-.app-select--hero .app-select__placeholder,
-.app-select--hero .app-select__value.is-placeholder {
-  color: #94a3b8;
-  font-weight: 500;
+.app-select__trigger:hover:not(:disabled) {
+  border-color: #cbd5e1;
 }
-.app-select--hero .app-select__chevron {
-  color: #94a3b8;
-}
-.app-select.is-open .app-select__trigger,
-.app-select__trigger:focus-visible {
-  border-color: #fca5a5;
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
-  outline: none;
-}
-.app-select--hero.is-open .app-select__trigger,
-.app-select--hero .app-select__trigger:focus-visible {
-  border-color: rgba(248, 113, 113, 0.65);
-  background: rgba(2, 6, 23, 0.65);
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+.app-select.is-open .app-select__trigger {
+  border-color: #fecaca;
+  box-shadow: 0 0 0 3px rgba(254, 202, 202, 0.45);
 }
 .app-select.is-disabled .app-select__trigger {
   opacity: 0.5;
   cursor: not-allowed;
-  background: #f1f5f9;
-}
-.app-select--hero.is-disabled .app-select__trigger {
-  background: rgba(2, 6, 23, 0.28);
-  border-color: rgba(148, 163, 184, 0.16);
 }
 
 .app-select__value {
@@ -332,9 +363,9 @@ watch(
   font-weight: 500;
 }
 .app-select__value-icon {
-  color: #64748b;
+  flex-shrink: 0;
+  opacity: 0.85;
 }
-
 .app-select__actions {
   display: inline-flex;
   align-items: center;
@@ -363,10 +394,10 @@ watch(
 }
 
 .app-select__menu {
-  position: absolute;
-  inset-inline: 0;
-  top: calc(100% + 0.4rem);
-  z-index: 50;
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border-radius: 1rem;
   border: 1px solid #e2e8f0;
@@ -377,6 +408,7 @@ watch(
 }
 
 .app-select__search {
+  flex-shrink: 0;
   padding: 0.65rem 0.65rem 0.35rem;
   border-bottom: 1px solid #f1f5f9;
 }
@@ -415,7 +447,8 @@ watch(
 }
 
 .app-select__list {
-  max-height: 16rem;
+  min-height: 0;
+  flex: 1;
   overflow-y: auto;
   padding: 0.35rem;
 }

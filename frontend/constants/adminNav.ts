@@ -1,3 +1,7 @@
+import { STORE_MODE } from '~/constants/site';
+
+const isTireStore = STORE_MODE === 'tire';
+
 export type AdminNavItem = {
   to: string;
   label: string;
@@ -76,16 +80,16 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       {
         to: '/admin/products',
-        label: 'محصولات',
+        label: isTireStore ? 'لاستیک‌ها' : 'محصولات',
         icon: 'shop:tire',
-        hint: 'قیمت، موجودی، مشخصات',
-        keywords: ['لاستیک', 'کالا'],
+        hint: isTireStore ? 'سایز، قیمت، موجودی' : 'قیمت، موجودی، مشخصات',
+        keywords: ['لاستیک', 'کالا', 'محصول'],
       },
       {
         to: '/admin/categories',
-        label: 'دسته‌بندی / برند',
+        label: isTireStore ? 'برندها' : 'دسته‌بندی‌ها',
         icon: 'lucide:layers',
-        hint: 'دسته‌ها و برندها',
+        hint: isTireStore ? 'مثل نکسین، ایران تایر' : 'دسته‌های فروشگاه',
         keywords: ['برند', 'دسته'],
       },
       {
@@ -103,10 +107,10 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       {
         to: '/admin/vehicles',
-        label: 'خودروها و fitment',
+        label: 'خودرو و سایز استاندارد',
         icon: 'lucide:car',
-        hint: 'برند، مدل، تیپ، سایز استاندارد',
-        keywords: ['ماشین', 'پژو', 'سایز خودرو'],
+        hint: 'مثلاً پژو ۲۰۶ → سایزهای مناسب',
+        keywords: ['ماشین', 'پژو', 'سایز خودرو', 'fitment'],
       },
       {
         to: '/admin/tire-sizes',

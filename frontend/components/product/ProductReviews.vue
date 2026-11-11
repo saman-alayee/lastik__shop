@@ -79,12 +79,20 @@ async function submit() {
     hasMine.value = true;
     toast.success(wasMine ? 'نظر شما به‌روز شد' : 'نظر شما ثبت شد');
     await load(1);
-  } catch (error) {
-    toast.error(error instanceof Error ? error.message : 'ثبت نظر انجام نشد');
+  } catch (e: unknown) {
+    toast.error(e instanceof Error ? e.message : 'ثبت نظر انجام نشد');
   } finally {
     saving.value = false;
   }
 }
+
+watch(
+  () => props.slug,
+  async () => {
+    page.value = 1;
+    await Promise.all([load(1), loadMine()]);
+  }
+);
 
 onMounted(async () => {
   await Promise.all([load(1), loadMine()]);
@@ -92,19 +100,19 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="mx-auto mt-8 max-w-[1240px] border-t border-gray-100 px-4 pb-10 pt-8">
+  <section class="relative mx-auto mt-4 max-w-[1240px] border-t border-slate-200/80 px-4 pb-10 pt-8">
     <div class="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h2 class="text-lg font-bold text-[#3c322b]">امتیاز و نظرات</h2>
-        <p class="mt-1 text-xs text-neutral-500">هر کاربر برای هر محصول یک نظر می‌تواند ثبت کند؛ همه نظرات عمومی‌اند.</p>
+        <h2 class="text-base font-extrabold text-slate-900">امتیاز و نظرات</h2>
+        <p class="mt-1 text-xs text-slate-500">تجربه خریداران واقعی این لاستیک</p>
       </div>
-      <div class="flex items-center gap-3 rounded-2xl bg-[#faf8f5] px-4 py-3">
+      <div class="flex items-center gap-3 border border-slate-200 bg-white px-4 py-3">
         <ProductRating :value="summary.ratingAvg" size="lg" />
-        <p class="text-sm leading-6 text-neutral-600">
+        <p class="text-sm leading-6 text-slate-600">
           <template v-if="summary.ratingCount">
-            <span class="font-semibold text-[#3c322b]">{{ toPersianDigits(summary.ratingAvg.toFixed(1)) }}</span>
+            <span class="font-extrabold text-slate-900">{{ toPersianDigits(summary.ratingAvg.toFixed(1)) }}</span>
             از ۵
-            <span class="mx-1 text-neutral-300">·</span>
+            <span class="mx-1 text-slate-300">·</span>
             {{ toPersianDigits(summary.ratingCount) }} نظر
           </template>
           <template v-else>هنوز نظری ثبت نشده</template>
@@ -112,34 +120,31 @@ onMounted(async () => {
       </div>
     </div>
 
-    <form
-      class="mt-6 max-w-2xl overflow-hidden rounded-2xl border border-[#eadfce] bg-white shadow-[0_10px_30px_rgba(73,32,45,0.05)]"
-      @submit.prevent="submit"
-    >
-      <div class="border-b border-[#f0e7db] bg-[#faf8f5] px-5 py-4">
-        <p class="text-sm font-semibold text-[#3c322b]">
+    <form class="mt-6 max-w-2xl border border-slate-200 bg-white" @submit.prevent="submit">
+      <div class="border-b border-slate-100 bg-slate-50 px-5 py-4">
+        <p class="text-sm font-extrabold text-slate-900">
           {{ hasMine ? 'نظر شما برای این محصول' : 'ثبت دیدگاه' }}
         </p>
-        <p class="mt-1 text-xs text-neutral-500">
+        <p class="mt-1 text-xs text-slate-500">
           {{ hasMine ? 'می‌توانید همان نظر را ویرایش کنید.' : 'فقط یک دیدگاه برای این محصول ثبت می‌شود.' }}
         </p>
       </div>
 
       <div class="px-5 py-5">
         <div v-if="auth.isLoggedIn">
-          <p class="mb-2 text-xs font-medium text-neutral-500">امتیاز شما</p>
+          <p class="mb-2 text-xs font-semibold text-slate-500">امتیاز شما</p>
           <div class="flex gap-1.5">
             <button
               v-for="n in 5"
               :key="n"
               type="button"
-              class="rounded-lg p-1 transition-transform hover:scale-105"
+              class="p-1 transition-transform hover:scale-105"
               :aria-label="`${toPersianDigits(n)} ستاره`"
               @click="rating = n"
             >
-              <svg class="h-9 w-9" viewBox="0 0 20 20" aria-hidden="true">
+              <svg class="h-8 w-8" viewBox="0 0 20 20" aria-hidden="true">
                 <path
-                  :fill="n <= rating ? '#c4922a' : '#ebe7e1'"
+                  :fill="n <= rating ? '#dc2626' : '#e2e8f0'"
                   d="M10 1.8l2.1 4.3 4.7.7-3.4 3.3.8 4.7L10 12.6 5.8 14.8l.8-4.7L3.2 6.8l4.7-.7L10 1.8z"
                 />
               </svg>
@@ -147,31 +152,31 @@ onMounted(async () => {
           </div>
 
           <label class="mt-5 block">
-            <span class="mb-2 block text-xs font-medium text-neutral-500">متن دیدگاه</span>
+            <span class="mb-2 block text-xs font-semibold text-slate-500">متن دیدگاه</span>
             <textarea
               v-model="body"
               rows="4"
               maxlength="500"
-              class="w-full rounded-xl border border-[#e8e0d4] bg-[#fcfbf9] px-4 py-3 text-sm leading-7 text-[#3c322b] outline-none transition-colors focus:border-[#c4922a] focus:bg-white"
+              class="w-full border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-800 outline-none transition-colors focus:border-slate-400 focus:bg-white"
               placeholder="تجربه خرید این لاستیک را بنویسید"
             />
           </label>
           <div class="mt-2 flex items-center justify-between gap-3">
-            <p class="text-[11px] text-neutral-400">{{ toPersianDigits(bodyLen) }} / ۵۰۰</p>
+            <p class="text-[11px] text-slate-400">{{ toPersianDigits(bodyLen) }} / ۵۰۰</p>
             <button
               type="submit"
-              class="inline-flex h-11 items-center rounded-xl bg-[#3c322b] px-5 text-sm text-white transition-opacity disabled:opacity-60"
+              class="inline-flex h-11 items-center bg-slate-800 px-5 text-sm font-bold text-white transition-colors hover:bg-slate-900 disabled:opacity-60"
               :disabled="saving"
             >
               {{ saving ? 'در حال ثبت' : hasMine ? 'به‌روزرسانی نظر' : 'ثبت نظر' }}
             </button>
           </div>
         </div>
-        <div v-else class="rounded-xl border border-dashed border-[#e8e0d4] bg-[#fcfbf9] px-4 py-6 text-center">
-          <p class="text-sm text-neutral-600">برای ثبت دیدگاه وارد حساب شوید.</p>
+        <div v-else class="border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+          <p class="text-sm text-slate-600">برای ثبت دیدگاه وارد حساب شوید.</p>
           <NuxtLink
             :to="loginTo"
-            class="mt-3 inline-flex h-10 items-center rounded-xl bg-primary-700 px-4 text-sm text-white"
+            class="mt-3 inline-flex h-10 items-center bg-slate-800 px-4 text-sm font-bold text-white"
           >
             ورود و ثبت نظر
           </NuxtLink>
@@ -179,27 +184,27 @@ onMounted(async () => {
       </div>
     </form>
 
-    <p v-if="loading" class="mt-8 text-sm text-neutral-500">در حال بارگذاری نظرات</p>
+    <p v-if="loading" class="mt-8 text-sm text-slate-500">در حال بارگذاری نظرات</p>
     <ul v-else-if="reviews.length" class="mt-8 space-y-3">
       <li
         v-for="review in reviews"
         :key="review.id"
-        class="rounded-2xl border border-gray-100 bg-white px-4 py-4 shadow-[0_4px_16px_rgba(35,37,78,0.03)]"
+        class="border border-slate-200 bg-white px-4 py-4"
       >
         <div class="flex flex-wrap items-center gap-2.5">
-          <p class="text-sm font-semibold text-[#3c322b]">{{ review.authorName }}</p>
+          <p class="text-sm font-extrabold text-slate-900">{{ review.authorName }}</p>
           <ProductRating :value="review.rating" size="md" />
-          <p class="text-xs text-neutral-400">{{ formatShortDate(review.createdAt) }}</p>
+          <p class="text-xs text-slate-400">{{ formatShortDate(review.createdAt) }}</p>
         </div>
-        <p v-if="review.body" class="mt-2.5 text-sm leading-7 text-[#6e655d]">{{ review.body }}</p>
+        <p v-if="review.body" class="mt-2.5 text-sm leading-7 text-slate-600">{{ review.body }}</p>
       </li>
     </ul>
-    <p v-else class="mt-8 text-sm text-neutral-500">هنوز دیدگاهی برای این محصول نیست.</p>
+    <p v-else class="mt-8 text-sm text-slate-500">هنوز دیدگاهی برای این محصول نیست.</p>
 
     <div v-if="pages > 1" class="mt-5 flex gap-2">
       <button
         type="button"
-        class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40"
+        class="border border-slate-200 px-3 py-1.5 text-sm disabled:opacity-40"
         :disabled="page <= 1 || loading"
         @click="load(page - 1)"
       >
@@ -207,7 +212,7 @@ onMounted(async () => {
       </button>
       <button
         type="button"
-        class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm disabled:opacity-40"
+        class="border border-slate-200 px-3 py-1.5 text-sm disabled:opacity-40"
         :disabled="page >= pages || loading"
         @click="load(page + 1)"
       >

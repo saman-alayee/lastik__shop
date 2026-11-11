@@ -5,7 +5,6 @@ import { SITE_NAME } from '~/constants/site';
 const api = useApi();
 const makes = ref<VehicleMake[]>([]);
 const loading = ref(true);
-const expandedMake = ref<string | null>(null);
 
 onMounted(async () => {
   loading.value = true;
@@ -19,10 +18,6 @@ onMounted(async () => {
   }
 });
 
-function toggleMake(slug: string) {
-  expandedMake.value = expandedMake.value === slug ? null : slug;
-}
-
 usePageSeo({
   title: `لاستیک خودرو | ${SITE_NAME}`,
   description: 'انتخاب برند و مدل خودرو برای یافتن سایز و لاستیک مناسب',
@@ -30,71 +25,57 @@ usePageSeo({
 </script>
 
 <template>
-  <div class="mx-auto max-w-[1240px] px-4 py-6">
+  <div class="mx-auto max-w-[1240px] px-4 py-6 md:py-8">
     <h1 class="section-title">لاستیک بر اساس خودرو</h1>
-    <p class="mb-4 text-sm text-gray-500">برند خودرو را انتخاب کنید، سپس مدل را برای دیدن لاستیک‌های سازگار.</p>
+    <p class="mb-4 text-sm text-slate-500">مدل ماشین را انتخاب کنید تا سایز استاندارد و لاستیک مناسب را ببینید.</p>
 
     <TireSearchWidget class="mb-8" />
 
     <LoadingSpinner :show="loading" />
 
-    <div v-if="!loading" class="space-y-3">
-      <article
-        v-for="make in makes"
-        :key="make.id"
-        class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-      >
-        <button
-          type="button"
-          class="flex w-full items-center justify-between gap-3 px-4 py-3 text-start"
-          @click="toggleMake(make.slug)"
-        >
-          <div class="flex items-center gap-3">
-            <span class="flex h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gray-100 ring-1 ring-gray-200">
-              <img
-                v-if="make.logo || make.models?.[0]?.image"
-                :src="make.logo || make.models?.[0]?.image || ''"
-                :alt="make.name"
-                class="h-full w-full object-cover"
-                width="48"
-                height="48"
-                loading="lazy"
-              />
-              <span v-else class="grid h-full w-full place-items-center text-primary-700">
-                <AppIcon name="lucide:car" size="md" />
-              </span>
-            </span>
-            <span class="font-bold text-gray-900">{{ make.name }}</span>
-          </div>
-          <AppIcon
-            name="lucide:chevron-down"
-            size="sm"
-            class="text-gray-400 transition-transform"
-            :class="expandedMake === make.slug ? 'rotate-180' : ''"
-          />
-        </button>
-        <ul v-if="expandedMake === make.slug && make.models?.length" class="border-t border-gray-100 px-2 pb-2">
+    <TireCarModelStrip v-if="!loading && makes.length" :makes="makes" title="مدل‌های پرفروش" />
+
+    <div v-if="!loading && makes.length" class="mt-10 space-y-8">
+      <section v-for="make in makes" :key="make.id">
+        <div class="mb-3 flex items-center gap-3">
+          <span class="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <img
+              v-if="make.logo || make.models?.[0]?.image"
+              :src="make.logo || make.models?.[0]?.image || ''"
+              :alt="make.name"
+              class="h-full w-full object-contain p-1"
+              width="44"
+              height="44"
+              loading="lazy"
+            />
+            <AppIcon v-else name="lucide:car" size="md" class="text-slate-400" />
+          </span>
+          <h2 class="text-base font-extrabold text-slate-900">{{ make.name }}</h2>
+        </div>
+
+        <ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           <li v-for="model in make.models" :key="model.id">
             <NuxtLink
               :to="`/cars/${make.slug}/${model.slug}`"
-              class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+              class="group block rounded-2xl border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-slate-300"
             >
-              <span class="h-11 w-16 shrink-0 overflow-hidden rounded-lg bg-gray-100">
+              <div class="grid aspect-[4/3] place-items-center overflow-hidden rounded-xl bg-white">
                 <img
                   v-if="model.image"
                   :src="model.image"
                   :alt="model.name"
-                  class="h-full w-full object-cover"
-                  width="64"
-                  height="44"
+                  class="h-[88%] w-[92%] object-contain object-bottom transition duration-300 group-hover:scale-[1.03]"
+                  width="200"
+                  height="150"
                   loading="lazy"
                 />
-              </span>
-              <span>{{ model.name }}</span>
+                <AppIcon v-else name="lucide:car" size="lg" class="text-slate-300" />
+              </div>
+              <p class="mt-2 text-center text-sm font-bold text-slate-800">{{ model.name }}</p>
             </NuxtLink>
           </li>
         </ul>
-      </article>
+      </section>
     </div>
 
     <EmptyState

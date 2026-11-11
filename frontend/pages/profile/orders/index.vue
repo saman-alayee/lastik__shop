@@ -10,9 +10,26 @@ const api = useApi();
 const { formatPrice, formatShortDate, toPersianDigits } = useFormat();
 const isTireStore = STORE_MODE === 'tire';
 
+const route = useRoute();
 const orders = ref<Order[]>([]);
 const loading = ref(true);
-const statusFilter = ref<OrderStatus | ''>('');
+
+const allowedStatuses = new Set<OrderStatus>([
+  'NEW',
+  'REVIEWING',
+  'PREPARING',
+  'SHIPPED',
+  'DELIVERED',
+  'CANCELLED',
+]);
+
+function readStatusFilter(raw: unknown): OrderStatus | '' {
+  const value = typeof raw === 'string' ? raw : '';
+  if (value === 'current') return 'PREPARING';
+  return allowedStatuses.has(value as OrderStatus) ? (value as OrderStatus) : '';
+}
+
+const statusFilter = ref<OrderStatus | ''>(readStatusFilter(route.query.status));
 
 const statusFilters: { value: OrderStatus | ''; label: string }[] = [
   { value: '', label: 'همه' },
@@ -25,8 +42,20 @@ const statusFilters: { value: OrderStatus | ''; label: string }[] = [
 
 const filteredOrders = computed(() => {
   if (!statusFilter.value) return orders.value;
+  if (statusFilter.value === 'PREPARING') {
+    return orders.value.filter((o) =>
+      ['NEW', 'REVIEWING', 'PREPARING', 'SHIPPED'].includes(o.status)
+    );
+  }
   return orders.value.filter((o) => o.status === statusFilter.value);
 });
+
+watch(
+  () => route.query.status,
+  (value) => {
+    statusFilter.value = readStatusFilter(value);
+  }
+);
 
 function orderRingCount(order: Order) {
   return (order.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -60,28 +89,27 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
 </script>
 
 <template>
-  <div class="orders-page pb-24">
+  <div class="orders-page pb-8">
     <ProfilePageHeader
       title="سفارش‌های من"
       :subtitle="isTireStore ? 'تکی، جفت و دو جفت — پیگیری خریدها' : 'تاریخچه و پیگیری سفارشات'"
       back-to="/profile"
     />
 
-    <div class="orders-filters">
-      <button
-        v-for="filter in statusFilters"
-        :key="filter.value || 'all'"
-        type="button"
-        :class="['orders-filters__chip', statusFilter === filter.value && 'is-active']"
-        @click="statusFilter = filter.value"
-      >
-        {{ filter.label }}
-      </button>
-    </div>
+    <div class="orders-panel">
+      <label class="orders-filter-field">
+        <span>وضعیت سفارش</span>
+        <AppSelect
+          v-model="statusFilter"
+          :options="statusFilters"
+          placeholder="همه وضعیت‌ها"
+          size="sm"
+        />
+      </label>
 
-    <LoadingSpinner :show="loading" />
+      <LoadingSpinner :show="loading" />
 
-    <div v-if="!loading && filteredOrders.length" class="orders-list">
+      <div v-if="!loading && filteredOrders.length" class="orders-list">
       <NuxtLink
         v-for="order in filteredOrders"
         :key="order.id"
@@ -122,42 +150,33 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
           <strong class="order-card__price">{{ formatPrice(order.totalPrice) }}</strong>
         </div>
       </NuxtLink>
-    </div>
+      </div>
 
-    <EmptyState v-else-if="!loading" message="سفارشی یافت نشد" />
+      <EmptyState v-else-if="!loading" message="سفارشی یافت نشد" />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.orders-filters {
-  display: flex;
-  gap: 0.45rem;
-  overflow-x: auto;
+.orders-panel {
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.orders-filter-field {
+  display: block;
+  max-width: 16rem;
   margin-bottom: 1rem;
-  padding-bottom: 0.2rem;
-  scrollbar-width: none;
 }
 
-.orders-filters::-webkit-scrollbar {
-  display: none;
-}
-
-.orders-filters__chip {
-  flex-shrink: 0;
-  padding: 0.4rem 0.85rem;
-  border-radius: 999px;
+.orders-filter-field > span {
+  display: block;
+  margin-bottom: 0.35rem;
   font-size: 0.75rem;
   font-weight: 700;
-  border: 1px solid #e2e8f0;
-  background: #fff;
   color: #64748b;
-  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
-}
-
-.orders-filters__chip.is-active {
-  background: #0f172a;
-  border-color: #0f172a;
-  color: #fff;
 }
 
 .orders-list {
@@ -168,19 +187,17 @@ useHead({ title: `سفارش‌های من - ${SITE_NAME}` });
 
 .order-card {
   display: block;
-  padding: 1rem;
-  border-radius: 1.25rem;
-  border: 1px solid #e2e8f0;
+  padding: 0.95rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid #e5e7eb;
   background: #fff;
   text-decoration: none;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  transition: border-color 160ms ease, background-color 160ms ease;
 }
 
 .order-card:hover {
-  transform: translateY(-1px);
-  border-color: rgba(220, 38, 38, 0.28);
-  box-shadow: 0 14px 28px -20px rgba(15, 23, 42, 0.35);
+  border-color: #d1d5db;
+  background: #fafafa;
 }
 
 .order-card__head {

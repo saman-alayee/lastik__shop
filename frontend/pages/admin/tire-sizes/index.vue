@@ -6,6 +6,7 @@ definePageMeta({ layout: 'admin', middleware: 'admin' });
 
 const api = useApi();
 const toast = useToast();
+const { confirm } = useConfirmDialog();
 
 const sizes = ref<TireSize[]>([]);
 const loading = ref(true);
@@ -101,7 +102,12 @@ async function save() {
 }
 
 async function remove(id: string) {
-  if (!confirm('حذف این سایز؟')) return;
+  const ok = await confirm({
+    title: 'حذف سایز',
+    message: 'این سایز لاستیک حذف می‌شود.',
+    confirmText: 'حذف سایز',
+  });
+  if (!ok) return;
   try {
     await api.delete(`/admin/tire-sizes/${id}`);
     toast.success('حذف شد');

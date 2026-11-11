@@ -8,8 +8,13 @@ import { formatTireSizeLabel, slugifyTireSize } from '../src/utils/tire';
 const prisma = new PrismaClient();
 
 const SIZES = [
+  [165, 65, 13],
+  [175, 70, 13],
+  [185, 60, 14],
+  [185, 65, 14],
   [185, 65, 15],
   [195, 60, 15],
+  [195, 65, 15],
   [205, 60, 14],
   [205, 55, 16],
   [215, 55, 17],
@@ -74,61 +79,44 @@ async function main() {
 
   await prisma.vehicleMake.update({
     where: { id: peugeot.id },
-    data: { logo: '/images/cars/peugeot-make.jpg' },
+    data: { logo: '/images/cars/peugeot-make.png' },
   });
   await prisma.vehicleMake.update({
     where: { id: saipa.id },
-    data: { logo: '/images/cars/pride-131.jpg' },
+    data: { logo: '/images/cars/saipa-make.png' },
   });
   await prisma.vehicleMake.update({
     where: { id: iranKhodro.id },
-    data: { logo: '/images/cars/samand-lx.jpg' },
+    data: { logo: '/images/cars/ikco-make.png' },
   });
 
-  const m206 = await prisma.vehicleModel.upsert({
-    where: { makeId_slug: { makeId: peugeot.id, slug: '206' } },
-    create: {
-      makeId: peugeot.id,
-      name: '۲۰۶',
-      slug: '206',
-      nameEn: '206',
-      image: '/images/cars/peugeot-206.jpg',
-    },
-    update: { name: '۲۰۶', isActive: true, image: '/images/cars/peugeot-206.jpg' },
-  });
-  const m405 = await prisma.vehicleModel.upsert({
-    where: { makeId_slug: { makeId: peugeot.id, slug: '405' } },
-    create: {
-      makeId: peugeot.id,
-      name: '۴۰۵',
-      slug: '405',
-      nameEn: '405',
-      image: '/images/cars/peugeot-405.jpg',
-    },
-    update: { name: '۴۰۵', isActive: true, image: '/images/cars/peugeot-405.jpg' },
-  });
-  const pride = await prisma.vehicleModel.upsert({
-    where: { makeId_slug: { makeId: saipa.id, slug: 'pride-131' } },
-    create: {
-      makeId: saipa.id,
-      name: 'پراید ۱۳۱',
-      slug: 'pride-131',
-      nameEn: 'Pride 131',
-      image: '/images/cars/pride-131.jpg',
-    },
-    update: { name: 'پراید ۱۳۱', isActive: true, image: '/images/cars/pride-131.jpg' },
-  });
-  const samand = await prisma.vehicleModel.upsert({
-    where: { makeId_slug: { makeId: iranKhodro.id, slug: 'samand-lx' } },
-    create: {
-      makeId: iranKhodro.id,
-      name: 'سمند LX',
-      slug: 'samand-lx',
-      nameEn: 'Samand LX',
-      image: '/images/cars/samand-lx.jpg',
-    },
-    update: { name: 'سمند LX', isActive: true, image: '/images/cars/samand-lx.jpg' },
-  });
+  async function upsertModel(
+    makeId: string,
+    slug: string,
+    name: string,
+    nameEn: string,
+    image: string,
+    sortOrder = 0
+  ) {
+    return prisma.vehicleModel.upsert({
+      where: { makeId_slug: { makeId, slug } },
+      create: { makeId, name, slug, nameEn, image, sortOrder },
+      update: { name, isActive: true, image, sortOrder },
+    });
+  }
+
+  const m206 = await upsertModel(peugeot.id, '206', 'پژو ۲۰۶', '206', '/images/cars/peugeot-206.png', 1);
+  const m206sd = await upsertModel(peugeot.id, '206-sd', '۲۰۶ SD', '206 SD', '/images/cars/peugeot-206-sd.png', 2);
+  const m207 = await upsertModel(peugeot.id, '207', 'پژو ۲۰۷', '207', '/images/cars/peugeot-207.png', 3);
+  const m405 = await upsertModel(peugeot.id, '405', 'پژو ۴۰۵', '405', '/images/cars/peugeot-405.png', 4);
+  const mPars = await upsertModel(peugeot.id, 'pars', 'پژو پارس', 'Pars', '/images/cars/peugeot-pars.png', 5);
+  const pride = await upsertModel(saipa.id, 'pride-131', 'پراید ۱۳۱', 'Pride 131', '/images/cars/pride-131.png', 1);
+  const prideAll = await upsertModel(saipa.id, 'pride', 'پراید همه مدل‌ها', 'Pride', '/images/cars/pride-all.png', 2);
+  const prideCompact = await upsertModel(saipa.id, 'pride-111-131', 'پراید ۱۱۱ / ۱۳۱', 'Pride 111/131', '/images/cars/pride.png', 3);
+  const tibaHatch = await upsertModel(saipa.id, 'tiba-hatch', 'تیبا هاچبک', 'Tiba Hatch', '/images/cars/tiba-hatch.png', 4);
+  const tibaSedan = await upsertModel(saipa.id, 'tiba-sedan', 'تیبا صندوقدار', 'Tiba Sedan', '/images/cars/tiba-sedan.png', 5);
+  const samand = await upsertModel(iranKhodro.id, 'samand-lx', 'سمند LX', 'Samand LX', '/images/cars/samand-lx.png', 1);
+  const tondar = await upsertModel(iranKhodro.id, 'tondar-90', 'تندر ۹۰', 'Tondar 90', '/images/cars/tondar-90.png', 2);
 
   for (const [name, slug] of [
     ['تیپ ۱', 'tip-1'],
@@ -147,12 +135,23 @@ async function main() {
     { modelId: m206.id, sizeLabel: '185/65R15', standard: true },
     { modelId: m206.id, sizeLabel: '195/60R15', standard: true },
     { modelId: m206.id, sizeLabel: '205/55R16', standard: false },
+    { modelId: m206sd.id, sizeLabel: '185/65R15', standard: true },
+    { modelId: m207.id, sizeLabel: '185/65R15', standard: true },
+    { modelId: m207.id, sizeLabel: '195/60R15', standard: true },
     { modelId: m405.id, sizeLabel: '185/65R15', standard: true },
     { modelId: m405.id, sizeLabel: '195/60R15', standard: true },
+    { modelId: mPars.id, sizeLabel: '185/65R15', standard: true },
+    { modelId: mPars.id, sizeLabel: '195/65R15', standard: true },
     { modelId: pride.id, sizeLabel: '165/65R13', standard: true },
     { modelId: pride.id, sizeLabel: '175/70R13', standard: true },
+    { modelId: prideAll.id, sizeLabel: '165/65R13', standard: true },
+    { modelId: prideCompact.id, sizeLabel: '165/65R13', standard: true },
+    { modelId: tibaHatch.id, sizeLabel: '185/60R14', standard: true },
+    { modelId: tibaSedan.id, sizeLabel: '185/65R14', standard: true },
     { modelId: samand.id, sizeLabel: '185/65R15', standard: true },
     { modelId: samand.id, sizeLabel: '205/60R14', standard: true },
+    { modelId: tondar.id, sizeLabel: '185/65R15', standard: true },
+    { modelId: tondar.id, sizeLabel: '195/60R15', standard: true },
   ];
 
   for (const [width, aspect, rim, label, slug] of [

@@ -196,36 +196,30 @@ usePageSeo(() => ({
     <div class="sticky top-14 z-30 min-w-0 border-b border-gray-100 bg-white/95 px-4 pb-4 pt-4 backdrop-blur">
       <h1 class="section-title mb-3">{{ category?.name }}</h1>
 
-      <ChipStrip class="mb-3 pb-1">
-        <NuxtLink
-          to="/categories"
-          class="whitespace-nowrap rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600"
-          draggable="false"
-        >
-          همه
-        </NuxtLink>
-        <NuxtLink
-          v-for="item in categories"
-          :key="item.id"
-          :to="`/categories/${item.slug}`"
-          :class="[
-            'whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
-            item.slug === slug
-              ? 'bg-primary-600 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
-          ]"
-          draggable="false"
-        >
-          {{ item.name }}
-        </NuxtLink>
-      </ChipStrip>
-
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <label class="block min-w-0">
+          <span class="field-label">برند / دسته</span>
+          <AppSelect
+            :model-value="slug"
+            :options="[
+              { value: '__all__', label: 'همه دسته‌ها' },
+              ...(categories ?? []).map((item) => ({ value: item.slug, label: item.name })),
+            ]"
+            searchable
+            size="sm"
+            @update:model-value="(value) => {
+              const next = String(value || '');
+              if (!next || next === '__all__') navigateTo('/categories');
+              else if (next !== slug) navigateTo(`/categories/${next}`);
+            }"
+          />
+        </label>
         <label class="block min-w-0">
           <span class="field-label">فیلتر</span>
           <AppSelect
             :model-value="listingFilter"
             :options="filterOptions"
+            size="sm"
             @update:model-value="setFilter"
           />
         </label>
@@ -234,6 +228,7 @@ usePageSeo(() => ({
           <AppSelect
             :model-value="sort"
             :options="sortOptions"
+            size="sm"
             @update:model-value="setSort"
           />
         </label>

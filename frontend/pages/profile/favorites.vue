@@ -19,15 +19,32 @@ useHead({ title: `علاقه‌مندی‌ها - ${SITE_NAME}` });
 </script>
 
 <template>
-  <div>
+  <div class="fav-page">
     <ProfilePageHeader title="علاقه‌مندی‌ها" subtitle="محصولات منتخب شما" back-to="/profile" />
 
-    <LoadingSpinner :show="loading" />
+    <div class="fav-panel">
+      <LoadingSpinner :show="loading" />
 
-    <ProductCardList v-if="!loading && products.length" :products="products" />
+      <ProductCardList v-if="!loading && products.length" :products="products" />
 
-    <EmptyCatalogScene v-if="!loading && !products.length" variant="favorites" class="mt-2">
-      <NuxtLink to="/shop" class="btn-primary btn-action text-sm px-6">رفتن به فروشگاه</NuxtLink>
-    </EmptyCatalogScene>
+      <EmptyCatalogScene v-if="!loading && !products.length" variant="favorites" class="!py-8">
+        <NuxtLink to="/shop" class="btn-primary btn-action text-sm px-6">رفتن به فروشگاه</NuxtLink>
+      </EmptyCatalogScene>
+    </div>
   </div>
 </template>
+
+<style scoped>
+.fav-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.fav-panel {
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+</style>

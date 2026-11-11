@@ -6,6 +6,7 @@ definePageMeta({ layout: 'admin', middleware: 'admin' });
 
 const api = useApi();
 const toast = useToast();
+const { confirm } = useConfirmDialog();
 const authStore = useAuthStore();
 const { isFullAdmin } = useAdminAccess();
 const { formatDate } = useFormat();
@@ -145,13 +146,12 @@ async function removeUser(user: PanelUser) {
     toast.error('نمی‌توانید خودتان را حذف کنید');
     return;
   }
-  if (
-    !confirm(
-      `دسترسی پنل «${displayName(user)}» حذف شود؟\n(به مشتری تبدیل می‌شود و دیگر وارد پنل نمی‌شود)`
-    )
-  ) {
-    return;
-  }
+  const ok = await confirm({
+    title: 'حذف دسترسی پنل',
+    message: `دسترسی پنل «${displayName(user)}» حذف شود؟\nبه مشتری تبدیل می‌شود و دیگر وارد پنل نمی‌شود.`,
+    confirmText: 'حذف دسترسی',
+  });
+  if (!ok) return;
   try {
     await api.delete(`/admin/admins/${user.id}`);
     toast.success('دسترسی پنل حذف شد');

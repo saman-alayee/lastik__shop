@@ -212,7 +212,7 @@ useHead({ title: 'سفارش‌ها - پنل مدیریت' });
 
     <AdminFilterBar
       title="جستجو و فیلتر سفارش‌ها"
-      hint="شماره سفارش، نام، موبایل یا کد محصول را جستجو کنید؛ وضعیت ارسال را از چیپ‌ها بزنید."
+      hint="شماره سفارش، نام، موبایل یا کد محصول را جستجو کنید؛ وضعیت را از فهرست انتخاب کنید."
     >
       <template #search>
         <label class="admin-filter-field">
@@ -231,6 +231,20 @@ useHead({ title: 'سفارش‌ها - پنل مدیریت' });
       </template>
       <template #filters>
         <label class="admin-filter-field">
+          <span>وضعیت سفارش</span>
+          <AppSelect
+            v-model="statusFilter"
+            :options="[
+              { value: '', label: 'همه وضعیت‌ها' },
+              ...statusOptions.map((status) => ({
+                value: status,
+                label: ORDER_STATUS_LABELS[status],
+              })),
+            ]"
+            size="sm"
+          />
+        </label>
+        <label class="admin-filter-field">
           <span>از تاریخ</span>
           <AppDatePicker v-model="dateFrom" placeholder="از تاریخ" />
         </label>
@@ -242,21 +256,6 @@ useHead({ title: 'سفارش‌ها - پنل مدیریت' });
       <template #actions>
         <button type="button" class="btn-primary text-sm !py-2.5 !px-4" @click="searchOrders">
           اعمال فیلتر
-        </button>
-      </template>
-      <template #chips>
-        <button type="button" class="admin-chip" :class="{ 'is-active': !statusFilter }" @click="statusFilter = ''">
-          همه
-        </button>
-        <button
-          v-for="status in statusOptions"
-          :key="status"
-          type="button"
-          class="admin-chip"
-          :class="{ 'is-active': statusFilter === status }"
-          @click="statusFilter = status"
-        >
-          {{ ORDER_STATUS_LABELS[status] }}
         </button>
       </template>
     </AdminFilterBar>

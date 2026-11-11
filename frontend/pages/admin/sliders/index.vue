@@ -5,6 +5,7 @@ definePageMeta({ layout: 'admin', middleware: 'admin' });
 
 const api = useApi();
 const toast = useToast();
+const { confirm } = useConfirmDialog();
 const authStore = useAuthStore();
 const { can } = useAdminAccess();
 const { resolveMediaUrl } = useFormat();
@@ -192,7 +193,12 @@ async function save() {
 }
 
 async function remove(id: string) {
-  if (!confirm('این اسلایدر حذف شود؟')) return;
+  const ok = await confirm({
+    title: 'حذف بنر',
+    message: 'این اسلایدر از فروشگاه حذف می‌شود.',
+    confirmText: 'حذف بنر',
+  });
+  if (!ok) return;
   await api.delete(`/admin/sliders/${id}`);
   await loadSliders();
 }

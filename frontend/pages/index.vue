@@ -146,53 +146,12 @@ usePageSeo({
 
     <section v-if="tireMakes.length" class="border-y border-slate-200 bg-white py-10 md:py-14">
       <div class="mx-auto max-w-store px-4">
-        <HomeSection title="لاستیک بر اساس خودرو" to="/cars" />
-        <ul class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          <li v-for="make in tireMakes" :key="make.id">
-            <article class="group h-full overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 transition hover:-translate-y-0.5 hover:border-red-200 hover:shadow-md">
-              <div class="relative aspect-[16/10] overflow-hidden bg-slate-200">
-                <img
-                  v-if="make.logo || make.models?.[0]?.image"
-                  :src="make.logo || make.models?.[0]?.image || ''"
-                  :alt="make.name"
-                  class="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                  loading="lazy"
-                  width="480"
-                  height="300"
-                />
-                <div
-                  v-else
-                  class="grid h-full place-items-center bg-slate-900 text-red-300"
-                >
-                  <AppIcon name="lucide:car" size="lg" />
-                </div>
-                <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/75 to-transparent px-3 pb-2.5 pt-8">
-                  <p class="text-sm font-bold text-white">{{ make.name }}</p>
-                </div>
-              </div>
-              <div class="p-4">
-                <div class="flex flex-wrap gap-1.5">
-                  <NuxtLink
-                    v-for="model in (make.models ?? []).slice(0, 4)"
-                    :key="model.id"
-                    :to="`/cars/${make.slug}/${model.slug}`"
-                    class="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 ring-1 ring-slate-200 transition hover:text-red-600 hover:ring-red-200"
-                  >
-                    {{ model.name }}
-                  </NuxtLink>
-                </div>
-                <NuxtLink
-                  v-if="make.models?.[0]"
-                  :to="`/cars/${make.slug}/${make.models[0].slug}`"
-                  class="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-red-600 group-hover:text-red-700"
-                >
-                  مشاهده سایزها
-                  <AppIcon name="lucide:arrow-left" size="xs" />
-                </NuxtLink>
-              </div>
-            </article>
-          </li>
-        </ul>
+        <TireCarModelStrip :makes="tireMakes" title="لاستیک خودرو" />
+        <div class="mt-4 text-end">
+          <NuxtLink to="/cars" class="text-xs font-bold text-red-600 hover:text-red-700">
+            همه خودروها
+          </NuxtLink>
+        </div>
       </div>
     </section>
 

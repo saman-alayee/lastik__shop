@@ -202,11 +202,11 @@ function setSort(next: SortMode) {
   void router.replace({ path: '/search', query: buildQuery(overrides) });
 }
 
-function toggleInStock() {
-  onlyInStock.value = !onlyInStock.value;
+function setInStock(next: boolean) {
+  onlyInStock.value = next;
   void router.replace({
     path: '/search',
-    query: buildQuery({ inStock: onlyInStock.value ? '1' : '0' }),
+    query: buildQuery({ inStock: next ? '1' : '0' }),
   });
 }
 
@@ -256,35 +256,28 @@ usePageSeo(() => ({
       </div>
     </form>
 
-    <div class="flex gap-2 overflow-x-auto scrollbar-hide pb-3 mb-1">
-      <button
-        type="button"
-        :class="[
-          'shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors',
-          onlyInStock
-            ? 'bg-primary-600 text-white border-primary-600'
-            : 'bg-white text-gray-600 border-gray-200',
-        ]"
-        :aria-pressed="onlyInStock"
-        @click="toggleInStock"
-      >
-        <AppIcon name="lucide:package-check" size="sm" />
-        فقط موجود
-      </button>
-      <button
-        v-for="option in sortOptions"
-        :key="option.value"
-        type="button"
-        :class="[
-          'shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors',
-          sort === option.value
-            ? 'bg-primary-600 text-white border-primary-600'
-            : 'bg-white text-gray-600 border-gray-200',
-        ]"
-        @click="setSort(option.value)"
-      >
-        {{ option.label }}
-      </button>
+    <div class="mb-3 grid grid-cols-2 gap-3">
+      <label class="block min-w-0">
+        <span class="field-label">موجودی</span>
+        <AppSelect
+          :model-value="onlyInStock ? '1' : ''"
+          :options="[
+            { value: '', label: 'همه کالاها' },
+            { value: '1', label: 'فقط موجود' },
+          ]"
+          size="sm"
+          @update:model-value="(value) => setInStock(String(value) === '1')"
+        />
+      </label>
+      <label class="block min-w-0">
+        <span class="field-label">مرتب‌سازی</span>
+        <AppSelect
+          :model-value="sort"
+          :options="sortOptions"
+          size="sm"
+          @update:model-value="(value) => setSort(String(value) as SortMode)"
+        />
+      </label>
     </div>
 
     <LoadingSpinner :show="loading" />
